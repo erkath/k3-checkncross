@@ -1,16 +1,21 @@
+# === IDE ===
 *.iml
-.gradle
-/local.properties
 .idea/
-.DS_Store
-/build
-/captures
-.externalNativeBuild
-.cxx
-local.properties
 
+# === Gradle / Kotlin ===
+.gradle
+**/build/
 .kotlin/
 
-# for future
+# === Android ===
+local.properties
+/captures
+.externalNativeBuild
+**/.cxx/
+*.hprof
+
+# === Secrets ===
 *.jks
 *.keystore
+.env*
+keystore.properties
