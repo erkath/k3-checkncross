@@ -56,6 +56,38 @@ class DayViewModel(
     var sheet: TaskSheetState? by mutableStateOf(null)
         private set
 
+    /**
+     * Whether the overdue review is shown. Opens by itself once per start when there are
+     * open tasks on past days; closes by itself when the last one has been handled.
+     */
+    var reviewOpen: Boolean by mutableStateOf(false)
+        private set
+
+    init {
+        launchAction {
+            if (repository.all().any { it.isOverdue(today) }) reviewOpen = true
+        }
+    }
+
+    fun openReview() {
+        reviewOpen = true
+    }
+
+    fun closeReview() {
+        reviewOpen = false
+    }
+
+    fun reviewDone(taskId: Long) = reviewAction { repository.update(taskId, Task::markDone) }
+    fun reviewCancel(taskId: Long) = reviewAction { repository.update(taskId, Task::cancel) }
+    fun reviewToToday(taskId: Long) = reviewAction { actions.move(taskId, today) }
+    fun reviewToBacklog(taskId: Long) = reviewAction { actions.toBacklog(taskId) }
+    fun reviewAllToToday(taskIds: List<Long>) = reviewAction { actions.moveAll(taskIds, today) }
+
+    private fun reviewAction(block: suspend () -> Unit) = launchAction {
+        block()
+        if (repository.all().none { it.isOverdue(today) }) reviewOpen = false
+    }
+
     /** Whether the backlog sheet is shown. */
     var backlogOpen: Boolean by mutableStateOf(false)
         private set

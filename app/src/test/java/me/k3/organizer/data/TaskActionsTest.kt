@@ -140,6 +140,19 @@ class TaskActionsTest {
         assertThrows(IllegalStateException::class.java) { runBlocking { actions.move(2, tue) } }
     }
 
+    @Test
+    fun moveAll_movesEachTask() = runBlocking {
+        actions.moveAll(listOf(1, 2), tue)
+        assertEquals(listOf(TaskStatus.MOVED, TaskStatus.MOVED), listOf(task(1).status, task(2).status))
+        assertEquals(setOf(tue), repo.tasks.value.filter { it.status == TaskStatus.OPEN }.map { it.day }.toSet())
+    }
+
+    @Test
+    fun moveAll_withClosedTask_rejected() = runBlocking<Unit> {
+        repo.update(2) { it.markDone() }
+        assertThrows(IllegalStateException::class.java) { runBlocking { actions.moveAll(listOf(1, 2), tue) } }
+    }
+
     // --- planning from the backlog ---
 
     @Test

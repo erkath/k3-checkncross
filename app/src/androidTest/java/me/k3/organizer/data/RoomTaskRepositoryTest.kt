@@ -93,4 +93,16 @@ class RoomTaskRepositoryTest {
         assertThrows(IllegalStateException::class.java) { runBlocking { actions.undoMove(a.id) } }
         assertEquals(before, repo.all())
     }
+
+    @Test
+    fun failedMoveAll_rollsBack() = runBlocking<Unit> {
+        val a = repo.add(Task(title = "a", day = mon))
+        val b = repo.add(Task(title = "b", day = mon))
+        repo.update(b.id) { it.markDone() }
+        val before = repo.all()
+
+        // a moves first, then b fails: the transaction must undo a's move too.
+        assertThrows(IllegalStateException::class.java) { runBlocking { actions.moveAll(listOf(a.id, b.id), tue) } }
+        assertEquals(before, repo.all())
+    }
 }

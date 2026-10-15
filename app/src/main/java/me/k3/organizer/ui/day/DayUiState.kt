@@ -14,6 +14,8 @@ data class DayUiState(
     val untimed: List<Task> = emptyList(),
     /** Open tasks without a day, in creation order. Shown in the backlog sheet, counted on its button. */
     val backlog: List<Task> = emptyList(),
+    /** Open tasks left on past days, oldest first; the same for any day shown. */
+    val overdue: List<Task> = emptyList(),
 ) {
     val isEmpty: Boolean get() = timed.isEmpty() && untimed.isEmpty()
 }
@@ -25,7 +27,7 @@ private fun statusRank(status: TaskStatus): Int = when (status) {
     TaskStatus.CANCELLED, TaskStatus.MOVED -> 2
 }
 
-/** Picks the tasks of [day] out of [tasks], ordered by status group within each section, plus the backlog. */
+/** Picks the tasks of [day] out of [tasks], ordered by status group within each section, plus the backlog and overdue lists. */
 fun buildDayUiState(day: LocalDate, today: LocalDate, tasks: List<Task>): DayUiState {
     val onDay = tasks.filter { it.day == day }
     val closedLast = compareBy<Task> { statusRank(it.status) }
@@ -41,6 +43,7 @@ fun buildDayUiState(day: LocalDate, today: LocalDate, tasks: List<Task>): DayUiS
         backlog = tasks
             .filter { it.day == null && it.status == TaskStatus.OPEN }
             .sortedBy { it.id },
+        overdue = overdueTasks(tasks, today),
     )
 }
 
@@ -71,3 +74,8 @@ fun isValidMoveTarget(date: LocalDate, task: Task, today: LocalDate): Boolean =
 
 /** The day a backlog task goes to from the backlog sheet: the day shown, but never a past one. */
 fun backlogTarget(shownDay: LocalDate, today: LocalDate): LocalDate = maxOf(shownDay, today)
+
+/** Open tasks on days before [today], for the overdue review: by day, then time (untimed first), then id. */
+fun overdueTasks(tasks: List<Task>, today: LocalDate): List<Task> =
+    tasks.filter { it.isOverdue(today) }
+        .sortedWith(compareBy<Task>({ it.day }, { it.startTime }, { it.id }))

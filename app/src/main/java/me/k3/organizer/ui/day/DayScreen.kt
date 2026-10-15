@@ -91,6 +91,7 @@ fun DayScreen(modifier: Modifier = Modifier, viewModel: DayViewModel = viewModel
         ),
         onAddTask = viewModel::startNewTask,
         onOpenBacklog = viewModel::openBacklog,
+        onOpenReview = viewModel::openReview,
         modifier = modifier,
     )
     viewModel.sheet?.let { sheet ->
@@ -106,6 +107,20 @@ fun DayScreen(modifier: Modifier = Modifier, viewModel: DayViewModel = viewModel
                 onUndoMove = viewModel::undoMoveFromSheet,
                 onDelete = viewModel::deleteFromSheet,
                 onDismiss = viewModel::closeSheet,
+            ),
+        )
+    }
+    if (viewModel.reviewOpen && state.overdue.isNotEmpty()) {
+        ReviewSheet(
+            tasks = state.overdue,
+            today = viewModel.today,
+            actions = ReviewActions(
+                onDone = viewModel::reviewDone,
+                onCancel = viewModel::reviewCancel,
+                onToday = viewModel::reviewToToday,
+                onBacklog = viewModel::reviewToBacklog,
+                onAllToToday = viewModel::reviewAllToToday,
+                onDismiss = viewModel::closeReview,
             ),
         )
     }
@@ -147,6 +162,7 @@ fun DayContent(
     taskCallbacks: TaskCallbacks,
     onAddTask: () -> Unit,
     onOpenBacklog: () -> Unit,
+    onOpenReview: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Scaffold(
@@ -157,7 +173,7 @@ fun DayContent(
             }
         },
     ) { innerPadding ->
-        DayList(state, today, onPreviousDay, onNextDay, onToday, onOpenBacklog, taskCallbacks, Modifier.padding(innerPadding))
+        DayList(state, today, onPreviousDay, onNextDay, onToday, onOpenBacklog, onOpenReview, taskCallbacks, Modifier.padding(innerPadding))
     }
 }
 
@@ -169,12 +185,18 @@ private fun DayList(
     onNextDay: () -> Unit,
     onToday: () -> Unit,
     onOpenBacklog: () -> Unit,
+    onOpenReview: () -> Unit,
     taskCallbacks: TaskCallbacks,
     modifier: Modifier = Modifier,
 ) {
     // Bottom padding keeps the last task clear of the floating "+" button.
     LazyColumn(modifier = modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 88.dp)) {
         item { DayHeader(state, onPreviousDay, onNextDay, onToday, onOpenBacklog) }
+
+        // Overdue tasks are about today: other days are for planning, so they stay quiet.
+        if (state.isToday && state.overdue.isNotEmpty()) {
+            item(key = "overdue") { OverdueBanner(state.overdue.size, onOpenReview, Modifier.animateItem()) }
+        }
 
         if (state.isEmpty) {
             item {
@@ -483,7 +505,7 @@ private fun DayContentPreview() {
         DayContent(
             state = buildDayUiState(today, today, sampleTasks(today)),
             today = today,
-            onPreviousDay = {}, onNextDay = {}, onToday = {}, taskCallbacks = TaskCallbacks.None, onAddTask = {}, onOpenBacklog = {},
+            onPreviousDay = {}, onNextDay = {}, onToday = {}, taskCallbacks = TaskCallbacks.None, onAddTask = {}, onOpenBacklog = {}, onOpenReview = {},
         )
     }
 }
@@ -496,7 +518,7 @@ private fun DayContentDarkPreview() {
         DayContent(
             state = buildDayUiState(today, today, sampleTasks(today)),
             today = today,
-            onPreviousDay = {}, onNextDay = {}, onToday = {}, taskCallbacks = TaskCallbacks.None, onAddTask = {}, onOpenBacklog = {},
+            onPreviousDay = {}, onNextDay = {}, onToday = {}, taskCallbacks = TaskCallbacks.None, onAddTask = {}, onOpenBacklog = {}, onOpenReview = {},
         )
     }
 }
@@ -509,7 +531,7 @@ private fun DayContentYesterdayPreview() {
         DayContent(
             state = buildDayUiState(today.minusDays(1), today, sampleTasks(today)),
             today = today,
-            onPreviousDay = {}, onNextDay = {}, onToday = {}, taskCallbacks = TaskCallbacks.None, onAddTask = {}, onOpenBacklog = {},
+            onPreviousDay = {}, onNextDay = {}, onToday = {}, taskCallbacks = TaskCallbacks.None, onAddTask = {}, onOpenBacklog = {}, onOpenReview = {},
         )
     }
 }
@@ -522,7 +544,7 @@ private fun DayContentEmptyPreview() {
         DayContent(
             state = buildDayUiState(today.plusDays(1), today, emptyList()),
             today = today,
-            onPreviousDay = {}, onNextDay = {}, onToday = {}, taskCallbacks = TaskCallbacks.None, onAddTask = {}, onOpenBacklog = {},
+            onPreviousDay = {}, onNextDay = {}, onToday = {}, taskCallbacks = TaskCallbacks.None, onAddTask = {}, onOpenBacklog = {}, onOpenReview = {},
         )
     }
 }

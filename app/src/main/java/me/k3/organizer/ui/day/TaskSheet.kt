@@ -280,10 +280,12 @@ private fun MoveSection(task: Task, today: LocalDate, actions: TaskSheetActions,
     }
 }
 
+/** "Yesterday" / "Today" / "Tomorrow", otherwise a short date like "Thu, 15 Oct". */
 @Composable
 internal fun relativeDayLabel(date: LocalDate, today: LocalDate): String = when (date) {
     today -> stringResource(R.string.day_today)
     today.plusDays(1) -> stringResource(R.string.day_tomorrow)
+    today.minusDays(1) -> stringResource(R.string.day_yesterday)
     else -> date.format(chipDayFormat)
 }
 

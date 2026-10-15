@@ -35,6 +35,11 @@ class TaskActions(private val repository: TaskRepository) {
         }
     }
 
+    /** Moves several tasks to [newDay] at once (all or nothing), as [move] does for one. */
+    suspend fun moveAll(ids: List<Long>, newDay: LocalDate) = repository.inTransaction {
+        ids.forEach { move(it, newDay) }
+    }
+
     /**
      * Plans a backlog task for [day], without a time. Leaves no trace, unless the task came
      * to the backlog from [day] earlier: then that entry is live again instead of a duplicate.

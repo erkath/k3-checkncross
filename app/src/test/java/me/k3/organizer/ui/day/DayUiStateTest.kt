@@ -75,6 +75,37 @@ class DayUiStateTest {
         assertEquals(mon, backlogTarget(shownDay = mon.minusDays(3), today = mon))
     }
 
+    // --- overdue ---
+
+    @Test
+    fun overdue_openTasksBeforeToday_byDayThenTime() {
+        val sat = mon.minusDays(2)
+        val sun = mon.minusDays(1)
+        val tasks = listOf(
+            timed(1, sun, 14),
+            untimed(2, sun),
+            timed(3, sat, 9),
+            untimed(4, sun).markDone(),
+            untimed(5, sun).cancel(),
+            untimed(6, mon),
+            untimed(7, null),
+        )
+        assertEquals(listOf(3L, 2L, 1L), overdueTasks(tasks, today = mon).map { it.id })
+    }
+
+    @Test
+    fun overdue_movedTraceIsNotOverdue() {
+        val moved = untimed(1, mon.minusDays(1)).moveTo(mon).old
+        assertEquals(emptyList<Task>(), overdueTasks(listOf(moved), today = mon))
+    }
+
+    @Test
+    fun overdue_sameForAnyShownDay() {
+        val tasks = listOf(untimed(1, mon.minusDays(1)))
+        assertEquals(listOf(1L), buildDayUiState(tue, mon, tasks).overdue.map { it.id })
+        assertEquals(listOf(1L), buildDayUiState(mon.minusDays(1), mon, tasks).overdue.map { it.id })
+    }
+
     // --- gestures ---
 
     @Test

@@ -33,6 +33,23 @@
     <string name="backlog_empty">Nothing here. Tasks without a day land in the backlog.</string>
     <string name="backlog_plan_for">Plan for %1$s</string>
 
+    <string name="day_yesterday">Yesterday</string>
+
+    <string name="review_title">Left from past days</string>
+    <plurals name="review_subtitle">
+        <item quantity="one">%1$d open task. What to do with it?</item>
+        <item quantity="other">%1$d open tasks. What to do with them?</item>
+    </plurals>
+    <plurals name="review_banner">
+        <item quantity="one">%1$d task left from past days</item>
+        <item quantity="other">%1$d tasks left from past days</item>
+    </plurals>
+    <string name="review_open">Review</string>
+    <string name="review_done">Done</string>
+    <string name="review_cross">Cross out</string>
+    <string name="review_later">Later</string>
+    <string name="review_all_to_today">All to today</string>
+
     <string name="action_add">Add</string>
     <string name="action_save">Save</string>
     <string name="action_delete">Delete</string>
