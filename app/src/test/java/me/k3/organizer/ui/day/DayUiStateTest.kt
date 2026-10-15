@@ -106,6 +106,31 @@ class DayUiStateTest {
         assertEquals(listOf(1L), buildDayUiState(mon.minusDays(1), mon, tasks).overdue.map { it.id })
     }
 
+    // --- the date changing ---
+
+    @Test
+    fun untilNextMidnight_fromVariousTimes() {
+        assertEquals(Duration.ofHours(24), untilNextMidnight(mon.atStartOfDay()))
+        assertEquals(Duration.ofMinutes(90), untilNextMidnight(mon.atTime(22, 30)))
+        assertEquals(Duration.ofSeconds(1), untilNextMidnight(mon.atTime(23, 59, 59)))
+    }
+
+    @Test
+    fun shownDay_followsToday_onlyIfItWasToday() {
+        assertEquals(tue, shownDayAfterTodayChange(shown = mon, oldToday = mon, newToday = tue))
+        val friday = mon.plusDays(4)
+        assertEquals(friday, shownDayAfterTodayChange(shown = friday, oldToday = mon, newToday = tue))
+        assertEquals(mon.minusDays(3), shownDayAfterTodayChange(shown = mon.minusDays(3), oldToday = mon, newToday = tue))
+    }
+
+    @Test
+    fun newDay_turnsYesterdaysOpenTasksOverdue() {
+        val tasks = listOf(untimed(1, mon))
+        assertTrue(buildDayUiState(mon, today = mon, tasks).overdue.isEmpty())
+        assertEquals(listOf(1L), buildDayUiState(tue, today = tue, tasks).overdue.map { it.id })
+        assertTrue(buildDayUiState(tue, today = tue, tasks).isToday)
+    }
+
     // --- gestures ---
 
     @Test

@@ -3,11 +3,14 @@ package me.k3.organizer.ui.day
 import me.k3.organizer.model.Placement
 import me.k3.organizer.model.Task
 import me.k3.organizer.model.TaskStatus
+import java.time.Duration
 import java.time.LocalDate
+import java.time.LocalDateTime
 
 data class DayUiState(
     val day: LocalDate,
-    val isToday: Boolean,
+    /** The current date; changes at midnight. */
+    val today: LocalDate,
     /** Tasks with a start time: open, then done, then cancelled/moved; each group by start time. */
     val timed: List<Task> = emptyList(),
     /** Tasks on this day without a time: open, then done, then cancelled/moved; each group in creation order. */
@@ -17,6 +20,7 @@ data class DayUiState(
     /** Open tasks left on past days, oldest first; the same for any day shown. */
     val overdue: List<Task> = emptyList(),
 ) {
+    val isToday: Boolean get() = day == today
     val isEmpty: Boolean get() = timed.isEmpty() && untimed.isEmpty()
 }
 
@@ -33,7 +37,7 @@ fun buildDayUiState(day: LocalDate, today: LocalDate, tasks: List<Task>): DayUiS
     val closedLast = compareBy<Task> { statusRank(it.status) }
     return DayUiState(
         day = day,
-        isToday = day == today,
+        today = today,
         timed = onDay
             .filter { it.placement is Placement.Timed }
             .sortedWith(closedLast.thenBy { it.startTime }.thenBy { it.id }),
@@ -79,3 +83,11 @@ fun backlogTarget(shownDay: LocalDate, today: LocalDate): LocalDate = maxOf(show
 fun overdueTasks(tasks: List<Task>, today: LocalDate): List<Task> =
     tasks.filter { it.isOverdue(today) }
         .sortedWith(compareBy<Task>({ it.day }, { it.startTime }, { it.id }))
+
+/** Time left until the next local midnight after [now]. */
+fun untilNextMidnight(now: LocalDateTime): Duration =
+    Duration.between(now, now.toLocalDate().plusDays(1).atStartOfDay())
+
+/** The day to show once "today" changes: a screen that was on today follows it; one browsing another day stays. */
+fun shownDayAfterTodayChange(shown: LocalDate, oldToday: LocalDate, newToday: LocalDate): LocalDate =
+    if (shown == oldToday) newToday else shown

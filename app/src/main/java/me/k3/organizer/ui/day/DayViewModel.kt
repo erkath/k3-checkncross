@@ -10,6 +10,7 @@ import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -26,14 +27,18 @@ import java.time.LocalDateTime
 
 class DayViewModel(
     private val repository: TaskRepository,
-    val today: LocalDate,
+    /** Source of the current local time; replaceable in tests. */
+    private val now: () -> LocalDateTime = LocalDateTime::now,
 ) : ViewModel() {
     private val actions = TaskActions(repository)
+    /** The current date. Not fixed at start: it follows midnight and is re-read whenever the app comes back. */
+    private val todayState = MutableStateFlow(now().toLocalDate())
+    private val today: LocalDate get() = todayState.value
     private val day = MutableStateFlow(today)
 
     val uiState: StateFlow<DayUiState> =
-        combine(day, repository.tasks) { day, tasks -> buildDayUiState(day, today, tasks) }
-            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), DayUiState(today, isToday = true))
+        combine(day, todayState, repository.tasks) { day, today, tasks -> buildDayUiState(day, today, tasks) }
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), DayUiState(day = today, today = today))
 
     fun previousDay() = day.update { it.minusDays(1) }
     fun nextDay() = day.update { it.plusDays(1) }
@@ -57,13 +62,38 @@ class DayViewModel(
         private set
 
     /**
-     * Whether the overdue review is shown. Opens by itself once per start when there are
+     * Whether the overdue review is shown. Opens by itself on start and on a new day when there are
      * open tasks on past days; closes by itself when the last one has been handled.
      */
     var reviewOpen: Boolean by mutableStateOf(false)
         private set
 
     init {
+        openReviewIfOverdue()
+        // While the app stays open, notice midnight. The loop re-checks after each wait, so a
+        // late or early wake-up (device sleep, a DST shift) only delays the switch, never skips it.
+        viewModelScope.launch {
+            while (true) {
+                delay(untilNextMidnight(now()).toMillis() + 1_000)
+                refreshToday()
+            }
+        }
+    }
+
+    /**
+     * Re-reads the date; called at midnight and whenever the screen is resumed. On a new day the
+     * screen follows if it was showing today, and the overdue review opens if needed.
+     */
+    fun refreshToday() {
+        val old = today
+        val new = now().toLocalDate()
+        if (new == old) return
+        todayState.value = new
+        day.update { shownDayAfterTodayChange(it, old, new) }
+        openReviewIfOverdue()
+    }
+
+    private fun openReviewIfOverdue() {
         launchAction {
             if (repository.all().any { it.isOverdue(today) }) reviewOpen = true
         }
@@ -137,7 +167,7 @@ class DayViewModel(
     fun setSheetTimeEnabled(enabled: Boolean) {
         val current = sheet?.takeIf { it.canEditTime } ?: return
         val taskDay = current.task?.day ?: day.value
-        sheet = current.copy(form = current.form.withTimeEnabled(enabled, taskDay, LocalDateTime.now()))
+        sheet = current.copy(form = current.form.withTimeEnabled(enabled, taskDay, now()))
     }
 
     fun closeSheet() {
@@ -206,7 +236,7 @@ class DayViewModel(
         val Factory = viewModelFactory {
             initializer {
                 val app = this[APPLICATION_KEY] as OrganizerApp
-                DayViewModel(app.taskRepository, LocalDate.now())
+                DayViewModel(app.taskRepository)
             }
         }
     }

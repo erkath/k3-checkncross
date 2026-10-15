@@ -58,6 +58,7 @@ import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import me.k3.organizer.R
@@ -77,9 +78,13 @@ private val dayFormat = DateTimeFormatter.ofPattern("EEEE, d MMMM")
 @Composable
 fun DayScreen(modifier: Modifier = Modifier, viewModel: DayViewModel = viewModel(factory = DayViewModel.Factory)) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
+    // Back in the app (or the screen turned on again): the date may have changed meanwhile.
+    LifecycleResumeEffect(viewModel) {
+        viewModel.refreshToday()
+        onPauseOrDispose {}
+    }
     DayContent(
         state = state,
-        today = viewModel.today,
         onPreviousDay = viewModel::previousDay,
         onNextDay = viewModel::nextDay,
         onToday = viewModel::goToToday,
@@ -98,7 +103,7 @@ fun DayScreen(modifier: Modifier = Modifier, viewModel: DayViewModel = viewModel
         TaskSheet(
             sheet = sheet,
             day = state.day,
-            today = viewModel.today,
+            today = state.today,
             actions = TaskSheetActions(
                 onChange = viewModel::editSheetForm,
                 onTimeEnabled = viewModel::setSheetTimeEnabled,
@@ -113,7 +118,7 @@ fun DayScreen(modifier: Modifier = Modifier, viewModel: DayViewModel = viewModel
     if (viewModel.reviewOpen && state.overdue.isNotEmpty()) {
         ReviewSheet(
             tasks = state.overdue,
-            today = viewModel.today,
+            today = state.today,
             actions = ReviewActions(
                 onDone = viewModel::reviewDone,
                 onCancel = viewModel::reviewCancel,
@@ -127,8 +132,8 @@ fun DayScreen(modifier: Modifier = Modifier, viewModel: DayViewModel = viewModel
     if (viewModel.backlogOpen) {
         BacklogSheet(
             tasks = state.backlog,
-            target = backlogTarget(state.day, viewModel.today),
-            today = viewModel.today,
+            target = backlogTarget(state.day, state.today),
+            today = state.today,
             actions = BacklogActions(
                 onAdd = viewModel::addToBacklog,
                 onSchedule = viewModel::scheduleFromBacklog,
@@ -155,7 +160,6 @@ class TaskCallbacks(
 @Composable
 fun DayContent(
     state: DayUiState,
-    today: LocalDate,
     onPreviousDay: () -> Unit,
     onNextDay: () -> Unit,
     onToday: () -> Unit,
@@ -173,7 +177,7 @@ fun DayContent(
             }
         },
     ) { innerPadding ->
-        DayList(state, today, onPreviousDay, onNextDay, onToday, onOpenBacklog, onOpenReview, taskCallbacks, Modifier.padding(innerPadding))
+        DayList(state, state.today, onPreviousDay, onNextDay, onToday, onOpenBacklog, onOpenReview, taskCallbacks, Modifier.padding(innerPadding))
     }
 }
 
@@ -520,7 +524,6 @@ private fun DayContentPreview() {
     MyOrganizerTheme {
         DayContent(
             state = buildDayUiState(today, today, sampleTasks(today)),
-            today = today,
             onPreviousDay = {}, onNextDay = {}, onToday = {}, taskCallbacks = TaskCallbacks.None, onAddTask = {}, onOpenBacklog = {}, onOpenReview = {},
         )
     }
@@ -533,7 +536,6 @@ private fun DayContentDarkPreview() {
     MyOrganizerTheme {
         DayContent(
             state = buildDayUiState(today, today, sampleTasks(today)),
-            today = today,
             onPreviousDay = {}, onNextDay = {}, onToday = {}, taskCallbacks = TaskCallbacks.None, onAddTask = {}, onOpenBacklog = {}, onOpenReview = {},
         )
     }
@@ -546,7 +548,6 @@ private fun DayContentYesterdayPreview() {
     MyOrganizerTheme {
         DayContent(
             state = buildDayUiState(today.minusDays(1), today, sampleTasks(today)),
-            today = today,
             onPreviousDay = {}, onNextDay = {}, onToday = {}, taskCallbacks = TaskCallbacks.None, onAddTask = {}, onOpenBacklog = {}, onOpenReview = {},
         )
     }
@@ -559,7 +560,6 @@ private fun DayContentEmptyPreview() {
     MyOrganizerTheme {
         DayContent(
             state = buildDayUiState(today.plusDays(1), today, emptyList()),
-            today = today,
             onPreviousDay = {}, onNextDay = {}, onToday = {}, taskCallbacks = TaskCallbacks.None, onAddTask = {}, onOpenBacklog = {}, onOpenReview = {},
         )
     }
