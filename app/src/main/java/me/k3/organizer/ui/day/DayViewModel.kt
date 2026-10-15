@@ -156,10 +156,22 @@ class DayViewModel(
     var calendarPromptVisible: Boolean by mutableStateOf(false)
         private set
 
+    /** Whether calendar events can be read. Without it the list ends with a "Connect" row. */
+    var calendarAccess: Boolean by mutableStateOf(false)
+        private set
+
     /** Re-reads the calendar, e.g. after access was granted or when the app comes back. */
     fun reloadEvents() {
-        calendarPromptVisible = !calendar.hasAccess() && !preferences.calendarPromptDismissed
+        calendarAccess = calendar.hasAccess()
+        calendarPromptVisible = !calendarAccess && !preferences.calendarPromptDismissed
         eventsReload.update { it + 1 }
+    }
+
+    /** Whether Android's permission dialog has been shown before; see [calendarConnectAction]. */
+    val calendarPermissionRequested: Boolean get() = preferences.calendarPermissionRequested
+
+    fun onCalendarPermissionRequested() {
+        preferences.calendarPermissionRequested = true
     }
 
     fun dismissCalendarPrompt() {

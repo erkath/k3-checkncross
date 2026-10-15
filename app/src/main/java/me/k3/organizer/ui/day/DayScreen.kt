@@ -62,6 +62,7 @@ import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import androidx.core.app.ActivityCompat
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -88,6 +89,24 @@ fun DayScreen(modifier: Modifier = Modifier, viewModel: DayViewModel = viewModel
     val calendarPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
         viewModel.reloadEvents()
     }
+    // "Allow" on the banner and "Connect" at the bottom: ask, or go to Settings once Android stopped asking.
+    val connectCalendar: () -> Unit = {
+        val activity = context.findActivity()
+        val action = calendarConnectAction(
+            granted = viewModel.calendarAccess,
+            requestedBefore = viewModel.calendarPermissionRequested,
+            showRationale = activity != null &&
+                ActivityCompat.shouldShowRequestPermissionRationale(activity, Manifest.permission.READ_CALENDAR),
+        )
+        when (action) {
+            CalendarConnectAction.REQUEST -> {
+                viewModel.onCalendarPermissionRequested()
+                calendarPermission.launch(Manifest.permission.READ_CALENDAR)
+            }
+            CalendarConnectAction.OPEN_SETTINGS -> openAppSettings(context)
+            CalendarConnectAction.NONE -> viewModel.reloadEvents()
+        }
+    }
     // Back in the app (or the screen turned on again): the date, the calendar or its permission
     // may have changed meanwhile.
     LifecycleResumeEffect(viewModel) {
@@ -111,13 +130,15 @@ fun DayScreen(modifier: Modifier = Modifier, viewModel: DayViewModel = viewModel
         onOpenReview = viewModel::openReview,
         calendarPrompt = if (viewModel.calendarPromptVisible) {
             CalendarPromptActions(
-                onAllow = { calendarPermission.launch(Manifest.permission.READ_CALENDAR) },
+                onAllow = connectCalendar,
                 onDismiss = viewModel::dismissCalendarPrompt,
             )
         } else {
             null
         },
         onOpenEvent = { openInCalendar(context, it) },
+        // The banner already offers it; the quiet row is for after "Not now".
+        onConnectCalendar = connectCalendar.takeIf { !viewModel.calendarAccess && !viewModel.calendarPromptVisible },
         modifier = modifier,
     )
     viewModel.sheet?.let { sheet ->
@@ -190,6 +211,8 @@ fun DayContent(
     onOpenReview: () -> Unit,
     calendarPrompt: CalendarPromptActions?,
     onOpenEvent: (CalendarEvent) -> Unit,
+    /** Shows a "Connect calendar" row at the end of the list; null hides it. */
+    onConnectCalendar: (() -> Unit)?,
     modifier: Modifier = Modifier,
 ) {
     Scaffold(
@@ -202,7 +225,7 @@ fun DayContent(
     ) { innerPadding ->
         DayList(
             state, state.today, onPreviousDay, onNextDay, onToday, onOpenBacklog, onOpenReview,
-            calendarPrompt, onOpenEvent, taskCallbacks, Modifier.padding(innerPadding),
+            calendarPrompt, onOpenEvent, onConnectCalendar, taskCallbacks, Modifier.padding(innerPadding),
         )
     }
 }
@@ -218,6 +241,8 @@ private fun DayList(
     onOpenReview: () -> Unit,
     calendarPrompt: CalendarPromptActions?,
     onOpenEvent: (CalendarEvent) -> Unit,
+    /** Shows a "Connect calendar" row at the end of the list; null hides it. */
+    onConnectCalendar: (() -> Unit)?,
     taskCallbacks: TaskCallbacks,
     modifier: Modifier = Modifier,
 ) {
@@ -275,6 +300,10 @@ private fun DayList(
                 // animateItem: animates the move when a task sinks to the bottom after being closed.
                 TaskRow(task, today, taskCallbacks, Modifier.animateItem())
             }
+        }
+
+        onConnectCalendar?.let { connect ->
+            item(key = "calendar-connect") { CalendarConnectRow(connect, Modifier.animateItem()) }
         }
     }
 }
@@ -579,7 +608,7 @@ private fun DayContentPreview() {
         DayContent(
             state = buildDayUiState(today, today, sampleTasks(today), sampleEvents(today)),
             onPreviousDay = {}, onNextDay = {}, onToday = {}, taskCallbacks = TaskCallbacks.None, onAddTask = {}, onOpenBacklog = {}, onOpenReview = {},
-            calendarPrompt = null, onOpenEvent = {},
+            calendarPrompt = null, onOpenEvent = {}, onConnectCalendar = null,
         )
     }
 }
@@ -592,7 +621,7 @@ private fun DayContentDarkPreview() {
         DayContent(
             state = buildDayUiState(today, today, sampleTasks(today), sampleEvents(today)),
             onPreviousDay = {}, onNextDay = {}, onToday = {}, taskCallbacks = TaskCallbacks.None, onAddTask = {}, onOpenBacklog = {}, onOpenReview = {},
-            calendarPrompt = null, onOpenEvent = {},
+            calendarPrompt = null, onOpenEvent = {}, onConnectCalendar = null,
         )
     }
 }
@@ -605,7 +634,7 @@ private fun DayContentYesterdayPreview() {
         DayContent(
             state = buildDayUiState(today.minusDays(1), today, sampleTasks(today)),
             onPreviousDay = {}, onNextDay = {}, onToday = {}, taskCallbacks = TaskCallbacks.None, onAddTask = {}, onOpenBacklog = {}, onOpenReview = {},
-            calendarPrompt = null, onOpenEvent = {},
+            calendarPrompt = null, onOpenEvent = {}, onConnectCalendar = null,
         )
     }
 }
@@ -618,7 +647,7 @@ private fun DayContentEmptyPreview() {
         DayContent(
             state = buildDayUiState(today.plusDays(1), today, emptyList()),
             onPreviousDay = {}, onNextDay = {}, onToday = {}, taskCallbacks = TaskCallbacks.None, onAddTask = {}, onOpenBacklog = {}, onOpenReview = {},
-            calendarPrompt = null, onOpenEvent = {},
+            calendarPrompt = null, onOpenEvent = {}, onConnectCalendar = null,
         )
     }
 }

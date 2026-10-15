@@ -1,10 +1,14 @@
 package me.k3.organizer.ui.day
 
+import android.app.Activity
 import android.content.ActivityNotFoundException
 import android.content.ContentUris
 import android.content.Context
+import android.content.ContextWrapper
 import android.content.Intent
+import android.net.Uri
 import android.provider.CalendarContract
+import android.provider.Settings
 import android.util.Log
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -124,6 +128,47 @@ fun CalendarPromptBanner(actions: CalendarPromptActions, modifier: Modifier = Mo
     }
 }
 
+/** Last row of the day list while the calendar is not connected; quieter than the banner, and never dismissed. */
+@Composable
+fun CalendarConnectRow(onConnect: () -> Unit, modifier: Modifier = Modifier) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = modifier.fillMaxWidth().padding(start = 16.dp, end = 8.dp, top = 16.dp),
+    ) {
+        Icon(
+            painterResource(R.drawable.ic_event),
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.size(18.dp),
+        )
+        Spacer(Modifier.size(12.dp))
+        Text(
+            stringResource(R.string.calendar_not_connected),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.weight(1f),
+        )
+        TextButton(onClick = onConnect) { Text(stringResource(R.string.calendar_connect)) }
+    }
+}
+
+/** Opens this app's page in the system Settings, where its permissions can be switched on. */
+fun openAppSettings(context: Context) {
+    val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", context.packageName, null))
+    try {
+        context.startActivity(intent)
+    } catch (e: ActivityNotFoundException) {
+        Log.w("CalendarAccess", "No settings screen", e)
+    }
+}
+
+/** The Activity behind a Compose [Context]; it may be wrapped (e.g. by the theme). */
+tailrec fun Context.findActivity(): Activity? = when (this) {
+    is Activity -> this
+    is ContextWrapper -> baseContext.findActivity()
+    else -> null
+}
+
 /** Demo events for previews. */
 fun sampleEvents(day: LocalDate): List<CalendarEvent> = listOf(
     CalendarEvent(1, "Mom's birthday", true, day.atStartOfDay(), day.plusDays(1).atStartOfDay(), 0xFFE67C73.toInt(), null, 0, 0),
@@ -135,4 +180,10 @@ fun sampleEvents(day: LocalDate): List<CalendarEvent> = listOf(
 @Composable
 private fun CalendarPromptBannerPreview() {
     MyOrganizerTheme { Surface { CalendarPromptBanner(CalendarPromptActions({}, {})) } }
+}
+
+@Preview(showBackground = true)
+@Composable
+private fun CalendarConnectRowPreview() {
+    MyOrganizerTheme { Surface { CalendarConnectRow(onConnect = {}) } }
 }

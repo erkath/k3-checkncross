@@ -56,6 +56,8 @@
     <string name="calendar_prompt_text">Show events from your calendar next to your tasks? They are only read, never changed.</string>
     <string name="calendar_prompt_allow">Allow</string>
     <string name="calendar_prompt_not_now">Not now</string>
+    <string name="calendar_not_connected">Calendar events are not shown</string>
+    <string name="calendar_connect">Connect</string>
 
     <string name="action_add">Add</string>
     <string name="action_save">Save</string>
