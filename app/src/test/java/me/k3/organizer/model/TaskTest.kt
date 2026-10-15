@@ -105,6 +105,20 @@ class TaskTest {
     }
 
     @Test
+    fun toggleDone_flipsBetweenOpenAndDone() {
+        assertEquals(TaskStatus.DONE, task().toggleDone().status)
+        assertEquals(TaskStatus.OPEN, task().toggleDone().toggleDone().status)
+        assertThrows(IllegalStateException::class.java) { task().cancel().toggleDone() }
+    }
+
+    @Test
+    fun toggleCancelled_flipsBetweenOpenAndCancelled() {
+        assertEquals(TaskStatus.CANCELLED, task().toggleCancelled().status)
+        assertEquals(TaskStatus.OPEN, task().toggleCancelled().toggleCancelled().status)
+        assertThrows(IllegalStateException::class.java) { task().markDone().toggleCancelled() }
+    }
+
+    @Test
     fun movedTask_canOnlyBeReopened() {
         val old = task().moveTo(tue).old
         assertThrows(IllegalStateException::class.java) { old.markDone() }

@@ -78,6 +78,12 @@ data class Task(
         return copy(status = TaskStatus.CANCELLED)
     }
 
+    /** Check button: OPEN → DONE, DONE → OPEN. */
+    fun toggleDone(): Task = if (status == TaskStatus.DONE) reopen() else markDone()
+
+    /** Cross button: OPEN → CANCELLED, CANCELLED → OPEN. */
+    fun toggleCancelled(): Task = if (status == TaskStatus.CANCELLED) reopen() else cancel()
+
     /**
      * Undo a check, a cross or a move. When undoing a move, the caller must also
      * delete the copy that [moveTo] / [toBacklog] created.

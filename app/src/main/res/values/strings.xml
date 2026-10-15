@@ -1,3 +1,21 @@
 <resources>
-    <string name="app_name">My Organizer</string>
+    <string name="app_name">k3-checkncross</string>
+
+    <string name="day_previous">Previous day</string>
+    <string name="day_next">Next day</string>
+    <string name="day_today">Today</string>
+    <string name="day_section_timed">Scheduled</string>
+    <string name="day_section_untimed">Anytime</string>
+    <string name="day_empty">Nothing planned for this day</string>
+
+    <string name="task_state_open">Not done</string>
+    <string name="task_state_done">Done</string>
+    <string name="task_state_cancelled">Cancelled</string>
+    <string name="task_state_moved">Moved</string>
+    <string name="task_mark_done">Mark done</string>
+    <string name="task_mark_not_done">Mark not done</string>
+    <string name="task_restore">Restore</string>
+    <string name="task_cancel">Cancel task</string>
+    <string name="task_moved_to">Moved to %1$s</string>
+    <string name="task_moved_to_backlog">Moved to backlog</string>
 </resources>
