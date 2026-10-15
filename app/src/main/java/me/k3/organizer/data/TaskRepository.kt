@@ -7,10 +7,13 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import me.k3.organizer.model.Task
 
-/** Source of tasks for the UI. In-memory for now; Room will implement the same interface. */
+/** Source of tasks for the UI: [RoomTaskRepository] in the app, [InMemoryTaskRepository] in tests. */
 interface TaskRepository {
     /** All tasks; emits a new list on every change. */
     val tasks: Flow<List<Task>>
+
+    /** All tasks right now; for one-off reads (a transaction must not collect [tasks]). */
+    suspend fun all(): List<Task>
 
     /** Saves a new task (id 0) and returns it with its assigned id. */
     suspend fun add(task: Task): Task
@@ -20,6 +23,9 @@ interface TaskRepository {
 
     /** Removes the task with [id]; tasks that were moved from it lose that link. Unknown id is an error. */
     suspend fun delete(id: Long)
+
+    /** Runs [block] atomically: if it throws, none of its changes are kept. */
+    suspend fun <R> inTransaction(block: suspend () -> R): R
 }
 
 class InMemoryTaskRepository(initial: List<Task> = emptyList()) : TaskRepository {
@@ -27,6 +33,8 @@ class InMemoryTaskRepository(initial: List<Task> = emptyList()) : TaskRepository
     private var nextId = (initial.maxOfOrNull { it.id } ?: 0) + 1
 
     override val tasks: StateFlow<List<Task>> = state.asStateFlow()
+
+    override suspend fun all(): List<Task> = state.value
 
     override suspend fun add(task: Task): Task {
         require(task.id == 0L) { "task is already saved with id ${task.id}" }
@@ -48,4 +56,7 @@ class InMemoryTaskRepository(initial: List<Task> = emptyList()) : TaskRepository
             list.filter { it.id != id }.map { if (it.movedFrom == id) it.copy(movedFrom = null) else it }
         }
     }
+
+    /** Not truly atomic: there is no rollback. Fine for tests and previews, where calls do not overlap. */
+    override suspend fun <R> inTransaction(block: suspend () -> R): R = block()
 }

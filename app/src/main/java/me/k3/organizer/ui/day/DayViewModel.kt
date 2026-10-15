@@ -12,7 +12,6 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -61,7 +60,7 @@ class DayViewModel(
 
     fun openTask(taskId: Long) {
         viewModelScope.launch {
-            val all = repository.tasks.first()
+            val all = repository.all()
             val task = all.first { it.id == taskId }
             sheet = TaskSheetState(TaskForm.from(task), task, TaskActions.canUndoMove(all, task))
         }

@@ -1,12 +1,12 @@
 package me.k3.organizer
 
 import android.app.Application
-import me.k3.organizer.data.InMemoryTaskRepository
+import me.k3.organizer.data.RoomTaskRepository
 import me.k3.organizer.data.TaskRepository
-import me.k3.organizer.data.sampleTasks
-import java.time.LocalDate
+import me.k3.organizer.data.db.OrganizerDatabase
 
 /** Lives as long as the process; holds app-wide objects shared by all screens. */
 class OrganizerApp : Application() {
-    val taskRepository: TaskRepository by lazy { InMemoryTaskRepository(sampleTasks(LocalDate.now())) }
+    val database: OrganizerDatabase by lazy { OrganizerDatabase.build(this) }
+    val taskRepository: TaskRepository by lazy { RoomTaskRepository(database) }
 }

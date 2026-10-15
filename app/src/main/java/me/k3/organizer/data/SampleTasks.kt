@@ -6,7 +6,7 @@ import java.time.Duration
 import java.time.LocalDate
 import java.time.LocalTime
 
-/** Demo data around [today], until tasks can be created in the UI. Also used by previews. */
+/** Demo data around [today] for previews. */
 fun sampleTasks(today: LocalDate): List<Task> {
     val yesterday = today.minusDays(1)
     return listOf(
