@@ -45,6 +45,7 @@
         <item quantity="other">%1$d tasks left from past days</item>
     </plurals>
     <string name="review_open">Review</string>
+    <string name="review_open_overdue">Review tasks left from past days</string>
     <string name="review_done">Done</string>
     <string name="review_cross">Cross out</string>
     <string name="review_later">Later</string>

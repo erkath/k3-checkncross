@@ -191,7 +191,7 @@ private fun DayList(
 ) {
     // Bottom padding keeps the last task clear of the floating "+" button.
     LazyColumn(modifier = modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 88.dp)) {
-        item { DayHeader(state, onPreviousDay, onNextDay, onToday, onOpenBacklog) }
+        item { DayHeader(state, onPreviousDay, onNextDay, onToday, onOpenBacklog, onOpenReview) }
 
         // Overdue tasks are about today: other days are for planning, so they stay quiet.
         if (state.isToday && state.overdue.isNotEmpty()) {
@@ -231,6 +231,7 @@ private fun DayHeader(
     onNextDay: () -> Unit,
     onToday: () -> Unit,
     onOpenBacklog: () -> Unit,
+    onOpenReview: () -> Unit,
 ) {
     Column {
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
@@ -248,9 +249,24 @@ private fun DayHeader(
             IconButton(onClick = onNextDay) {
                 Icon(painterResource(R.drawable.ic_chevron_right), contentDescription = stringResource(R.string.day_next))
             }
+            if (state.overdue.isNotEmpty()) OverdueButton(count = state.overdue.size, onClick = onOpenReview)
             BacklogButton(count = state.backlog.size, onClick = onOpenBacklog)
         }
         HorizontalDivider()
+    }
+}
+
+/** Opens the overdue review; shown only while open tasks are left on past days. */
+@Composable
+private fun OverdueButton(count: Int, onClick: () -> Unit) {
+    IconButton(onClick = onClick) {
+        BadgedBox(badge = { Badge { Text(count.toString()) } }) {
+            Icon(
+                painterResource(R.drawable.ic_warning),
+                contentDescription = stringResource(R.string.review_open_overdue),
+                tint = MaterialTheme.colorScheme.error,
+            )
+        }
     }
 }
 
