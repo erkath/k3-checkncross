@@ -78,6 +78,7 @@ data class TaskSheetState(
     val canUndoMove: Boolean = false,
 ) {
     val isNew: Boolean get() = task == null
-    val canEditTime: Boolean get() = task == null || task.status == TaskStatus.OPEN
+    /** Time belongs to a day: not for closed tasks, and not for backlog ones. */
+    val canEditTime: Boolean get() = task == null || (task.status == TaskStatus.OPEN && task.day != null)
     val canMove: Boolean get() = task != null && canSwipeRight(task)
 }

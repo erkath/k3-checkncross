@@ -27,6 +27,12 @@
     <string name="delete_task_text">“%1$s” will be deleted for good. To keep it in history, cross it out instead.</string>
     <string name="day_tomorrow">Tomorrow</string>
 
+    <string name="backlog_title">Backlog</string>
+    <string name="backlog_open">Open backlog</string>
+    <string name="backlog_add_hint">New task without a day</string>
+    <string name="backlog_empty">Nothing here. Tasks without a day land in the backlog.</string>
+    <string name="backlog_plan_for">Plan for %1$s</string>
+
     <string name="action_add">Add</string>
     <string name="action_save">Save</string>
     <string name="action_delete">Delete</string>

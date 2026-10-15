@@ -23,6 +23,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Badge
+import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -88,6 +90,7 @@ fun DayScreen(modifier: Modifier = Modifier, viewModel: DayViewModel = viewModel
             onSwipeRight = viewModel::onSwipeRight,
         ),
         onAddTask = viewModel::startNewTask,
+        onOpenBacklog = viewModel::openBacklog,
         modifier = modifier,
     )
     viewModel.sheet?.let { sheet ->
@@ -103,6 +106,19 @@ fun DayScreen(modifier: Modifier = Modifier, viewModel: DayViewModel = viewModel
                 onUndoMove = viewModel::undoMoveFromSheet,
                 onDelete = viewModel::deleteFromSheet,
                 onDismiss = viewModel::closeSheet,
+            ),
+        )
+    }
+    if (viewModel.backlogOpen) {
+        BacklogSheet(
+            tasks = state.backlog,
+            target = backlogTarget(state.day, viewModel.today),
+            today = viewModel.today,
+            actions = BacklogActions(
+                onAdd = viewModel::addToBacklog,
+                onSchedule = viewModel::scheduleFromBacklog,
+                onOpen = viewModel::openBacklogTask,
+                onDismiss = viewModel::closeBacklog,
             ),
         )
     }
@@ -130,6 +146,7 @@ fun DayContent(
     onToday: () -> Unit,
     taskCallbacks: TaskCallbacks,
     onAddTask: () -> Unit,
+    onOpenBacklog: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Scaffold(
@@ -140,7 +157,7 @@ fun DayContent(
             }
         },
     ) { innerPadding ->
-        DayList(state, today, onPreviousDay, onNextDay, onToday, taskCallbacks, Modifier.padding(innerPadding))
+        DayList(state, today, onPreviousDay, onNextDay, onToday, onOpenBacklog, taskCallbacks, Modifier.padding(innerPadding))
     }
 }
 
@@ -151,17 +168,13 @@ private fun DayList(
     onPreviousDay: () -> Unit,
     onNextDay: () -> Unit,
     onToday: () -> Unit,
+    onOpenBacklog: () -> Unit,
     taskCallbacks: TaskCallbacks,
     modifier: Modifier = Modifier,
 ) {
-
-
-
-
-
     // Bottom padding keeps the last task clear of the floating "+" button.
     LazyColumn(modifier = modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 88.dp)) {
-        item { DayHeader(state, onPreviousDay, onNextDay, onToday) }
+        item { DayHeader(state, onPreviousDay, onNextDay, onToday, onOpenBacklog) }
 
         if (state.isEmpty) {
             item {
@@ -190,7 +203,13 @@ private fun DayList(
 }
 
 @Composable
-private fun DayHeader(state: DayUiState, onPreviousDay: () -> Unit, onNextDay: () -> Unit, onToday: () -> Unit) {
+private fun DayHeader(
+    state: DayUiState,
+    onPreviousDay: () -> Unit,
+    onNextDay: () -> Unit,
+    onToday: () -> Unit,
+    onOpenBacklog: () -> Unit,
+) {
     Column {
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
             IconButton(onClick = onPreviousDay) {
@@ -207,8 +226,19 @@ private fun DayHeader(state: DayUiState, onPreviousDay: () -> Unit, onNextDay: (
             IconButton(onClick = onNextDay) {
                 Icon(painterResource(R.drawable.ic_chevron_right), contentDescription = stringResource(R.string.day_next))
             }
+            BacklogButton(count = state.backlog.size, onClick = onOpenBacklog)
         }
         HorizontalDivider()
+    }
+}
+
+/** Opens the backlog sheet; a badge shows how many tasks wait there. */
+@Composable
+private fun BacklogButton(count: Int, onClick: () -> Unit) {
+    IconButton(onClick = onClick) {
+        BadgedBox(badge = { if (count > 0) Badge { Text(count.toString()) } }) {
+            Icon(painterResource(R.drawable.ic_inbox), contentDescription = stringResource(R.string.backlog_open))
+        }
     }
 }
 
@@ -453,7 +483,7 @@ private fun DayContentPreview() {
         DayContent(
             state = buildDayUiState(today, today, sampleTasks(today)),
             today = today,
-            onPreviousDay = {}, onNextDay = {}, onToday = {}, taskCallbacks = TaskCallbacks.None, onAddTask = {},
+            onPreviousDay = {}, onNextDay = {}, onToday = {}, taskCallbacks = TaskCallbacks.None, onAddTask = {}, onOpenBacklog = {},
         )
     }
 }
@@ -466,7 +496,7 @@ private fun DayContentDarkPreview() {
         DayContent(
             state = buildDayUiState(today, today, sampleTasks(today)),
             today = today,
-            onPreviousDay = {}, onNextDay = {}, onToday = {}, taskCallbacks = TaskCallbacks.None, onAddTask = {},
+            onPreviousDay = {}, onNextDay = {}, onToday = {}, taskCallbacks = TaskCallbacks.None, onAddTask = {}, onOpenBacklog = {},
         )
     }
 }
@@ -479,7 +509,7 @@ private fun DayContentYesterdayPreview() {
         DayContent(
             state = buildDayUiState(today.minusDays(1), today, sampleTasks(today)),
             today = today,
-            onPreviousDay = {}, onNextDay = {}, onToday = {}, taskCallbacks = TaskCallbacks.None, onAddTask = {},
+            onPreviousDay = {}, onNextDay = {}, onToday = {}, taskCallbacks = TaskCallbacks.None, onAddTask = {}, onOpenBacklog = {},
         )
     }
 }
@@ -492,7 +522,7 @@ private fun DayContentEmptyPreview() {
         DayContent(
             state = buildDayUiState(today.plusDays(1), today, emptyList()),
             today = today,
-            onPreviousDay = {}, onNextDay = {}, onToday = {}, taskCallbacks = TaskCallbacks.None, onAddTask = {},
+            onPreviousDay = {}, onNextDay = {}, onToday = {}, taskCallbacks = TaskCallbacks.None, onAddTask = {}, onOpenBacklog = {},
         )
     }
 }

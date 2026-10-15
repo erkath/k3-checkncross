@@ -227,13 +227,14 @@ private fun TaskSheetContent(
     }
 }
 
-/** The task's day, or where a MOVED task went. */
+/** The task's day, "Backlog" for a task without one, or where a MOVED task went. */
 @Composable
 private fun sheetSubtitle(task: Task?, day: LocalDate): String {
     if (task?.status == TaskStatus.MOVED) {
         return task.movedTo?.let { stringResource(R.string.task_moved_to, it.format(chipDayFormat)) }
             ?: stringResource(R.string.task_moved_to_backlog)
     }
+    if (task != null && task.day == null) return stringResource(R.string.backlog_title)
     return (task?.day ?: day).format(sheetDayFormat)
 }
 

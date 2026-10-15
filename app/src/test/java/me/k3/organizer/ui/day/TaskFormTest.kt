@@ -117,4 +117,27 @@ class TaskFormTest {
     fun applyTo_blankTitle_rejected() {
         assertThrows(IllegalStateException::class.java) { TaskForm.from(dentist).copy(title = "").applyTo(dentist) }
     }
+
+    // --- sheet state ---
+
+    @Test
+    fun sheetState_whatCanBeEdited() {
+        val newTask = TaskSheetState(TaskForm())
+        assertTrue(newTask.isNew)
+        assertTrue(newTask.canEditTime)
+        assertFalse(newTask.canMove)
+
+        val open = TaskSheetState(TaskForm.from(dentist), dentist)
+        assertTrue(open.canEditTime)
+        assertTrue(open.canMove)
+
+        val done = TaskSheetState(TaskForm.from(dentist), dentist.markDone())
+        assertFalse(done.canEditTime)
+        assertFalse(done.canMove)
+
+        val backlog = Task(id = 8, title = "Idea")
+        val inBacklog = TaskSheetState(TaskForm.from(backlog), backlog)
+        assertFalse(inBacklog.canEditTime)
+        assertFalse(inBacklog.canMove)
+    }
 }

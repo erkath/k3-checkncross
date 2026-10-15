@@ -140,6 +140,47 @@ class TaskActionsTest {
         assertThrows(IllegalStateException::class.java) { runBlocking { actions.move(2, tue) } }
     }
 
+    // --- planning from the backlog ---
+
+    @Test
+    fun schedule_backlogTask_keepsIdAndLeavesNoTrace() = runBlocking {
+        val idea = repo.add(Task(title = "Idea"))
+        val planned = actions.schedule(idea.id, tue)
+
+        assertEquals(idea.id, planned.id)
+        assertEquals(Placement.Untimed(tue), task(idea.id).placement)
+        assertEquals(3, repo.tasks.value.size)
+    }
+
+    @Test
+    fun schedule_backToDayItCameFrom_revertsInsteadOfDuplicate() = runBlocking {
+        val inBacklog = actions.toBacklog(1)
+        val back = actions.schedule(inBacklog.id, mon)
+
+        assertEquals(1L, back.id)
+        assertEquals(listOf(1L, 2L), repo.tasks.value.map { it.id })
+        assertEquals(TaskStatus.OPEN, task(1).status)
+        // It returns to its own slot in the time grid.
+        assertEquals(Placement.Timed(mon, nine, hour), task(1).placement)
+    }
+
+    @Test
+    fun schedule_toAnotherDay_keepsTheTrace() = runBlocking {
+        val inBacklog = actions.toBacklog(1)
+        actions.schedule(inBacklog.id, tue)
+
+        assertEquals(TaskStatus.MOVED, task(1).status)
+        assertEquals(Placement.Untimed(tue), task(inBacklog.id).placement)
+    }
+
+    @Test
+    fun schedule_datedOrClosedTask_rejected() = runBlocking<Unit> {
+        assertThrows(IllegalStateException::class.java) { runBlocking { actions.schedule(2, tue) } }
+        val idea = repo.add(Task(title = "Idea"))
+        repo.update(idea.id) { it.cancel() }
+        assertThrows(IllegalStateException::class.java) { runBlocking { actions.schedule(idea.id, tue) } }
+    }
+
     @Test
     fun chains_followLinksBothWays() = runBlocking {
         val tueCopy = actions.move(2, tue)

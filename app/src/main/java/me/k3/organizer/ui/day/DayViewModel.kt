@@ -56,6 +56,36 @@ class DayViewModel(
     var sheet: TaskSheetState? by mutableStateOf(null)
         private set
 
+    /** Whether the backlog sheet is shown. */
+    var backlogOpen: Boolean by mutableStateOf(false)
+        private set
+
+    fun openBacklog() {
+        backlogOpen = true
+    }
+
+    fun closeBacklog() {
+        backlogOpen = false
+    }
+
+    /** Quick add from the backlog sheet: a task with just a title and no day. Blank titles are ignored. */
+    fun addToBacklog(title: String) {
+        val trimmed = title.trim().ifEmpty { return }
+        launchAction { repository.add(Task(title = trimmed)) }
+    }
+
+    /** Plans a backlog task for the day shown (or today, if a past day is shown). The sheet stays open. */
+    fun scheduleFromBacklog(taskId: Long) {
+        val target = backlogTarget(day.value, today)
+        launchAction { actions.schedule(taskId, target) }
+    }
+
+    /** Opens a backlog task in the task sheet; the two sheets are not stacked. */
+    fun openBacklogTask(taskId: Long) {
+        backlogOpen = false
+        openTask(taskId)
+    }
+
     fun startNewTask() {
         sheet = TaskSheetState(TaskForm())
     }

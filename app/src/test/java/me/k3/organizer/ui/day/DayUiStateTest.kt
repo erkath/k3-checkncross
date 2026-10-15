@@ -54,6 +54,27 @@ class DayUiStateTest {
         assertEquals(listOf(2L, 3L, 1L), buildDayUiState(mon, mon, tasks).untimed.map { it.id })
     }
 
+    // --- backlog ---
+
+    @Test
+    fun backlog_openUndatedTasks_inCreationOrder_sameForAnyDay() {
+        val tasks = listOf(untimed(3, null), untimed(1, null), untimed(2, null).cancel(), untimed(4, mon))
+        assertEquals(listOf(1L, 3L), buildDayUiState(mon, mon, tasks).backlog.map { it.id })
+        assertEquals(listOf(1L, 3L), buildDayUiState(tue, mon, tasks).backlog.map { it.id })
+    }
+
+    @Test
+    fun backlog_doesNotCountForEmptyDay() {
+        assertTrue(buildDayUiState(mon, mon, listOf(untimed(1, null))).isEmpty)
+    }
+
+    @Test
+    fun backlogTarget_isShownDay_butNotInThePast() {
+        assertEquals(tue, backlogTarget(shownDay = tue, today = mon))
+        assertEquals(mon, backlogTarget(shownDay = mon, today = mon))
+        assertEquals(mon, backlogTarget(shownDay = mon.minusDays(3), today = mon))
+    }
+
     // --- gestures ---
 
     @Test

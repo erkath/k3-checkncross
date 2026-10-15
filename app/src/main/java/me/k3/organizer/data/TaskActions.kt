@@ -35,6 +35,25 @@ class TaskActions(private val repository: TaskRepository) {
         }
     }
 
+    /**
+     * Plans a backlog task for [day], without a time. Leaves no trace, unless the task came
+     * to the backlog from [day] earlier: then that entry is live again instead of a duplicate.
+     * Returns the live task.
+     */
+    suspend fun schedule(id: Long, day: LocalDate): Task = repository.inTransaction {
+        val all = repository.all()
+        val task = find(all, id)
+        check(task.day == null) { "task $id is already on ${task.day}" }
+        check(task.status == TaskStatus.OPEN) { "task $id is ${task.status}, not OPEN" }
+        val earlier = chainBefore(all, task).lastOrNull { it.day == day }
+        if (earlier != null) {
+            revertTo(all, earlier, earlier.startTime, earlier.duration)
+        } else {
+            repository.update(id) { it.schedule(day) }
+            find(id)
+        }
+    }
+
     /** Sends a dated task back to the backlog. Returns the new copy. */
     suspend fun toBacklog(id: Long): Task = repository.inTransaction {
         val move = find(id).toBacklog()
