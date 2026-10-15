@@ -1,11 +1,13 @@
 package me.k3.organizer.ui.day
 
+import me.k3.organizer.model.CalendarEvent
 import me.k3.organizer.model.Placement
 import me.k3.organizer.model.Task
 import me.k3.organizer.model.TaskStatus
 import java.time.Duration
 import java.time.LocalDate
 import java.time.LocalDateTime
+import java.time.LocalTime
 
 data class DayUiState(
     val day: LocalDate,
@@ -19,9 +21,26 @@ data class DayUiState(
     val backlog: List<Task> = emptyList(),
     /** Open tasks left on past days, oldest first; the same for any day shown. */
     val overdue: List<Task> = emptyList(),
+    /** Calendar events lasting all of [day] (or longer). */
+    val allDayEvents: List<CalendarEvent> = emptyList(),
+    /** The "Scheduled" section: timed tasks and timed calendar events together. */
+    val scheduled: List<ScheduledItem> = emptyList(),
 ) {
     val isToday: Boolean get() = day == today
-    val isEmpty: Boolean get() = timed.isEmpty() && untimed.isEmpty()
+    val isEmpty: Boolean get() = timed.isEmpty() && untimed.isEmpty() && allDayEvents.isEmpty() && scheduled.isEmpty()
+}
+
+/** A row of the "Scheduled" section: a task with a time, or a calendar event. */
+sealed interface ScheduledItem {
+    fun sortTimeOn(day: LocalDate): LocalTime
+
+    data class TaskItem(val task: Task) : ScheduledItem {
+        override fun sortTimeOn(day: LocalDate): LocalTime = checkNotNull(task.startTime)
+    }
+
+    data class EventItem(val event: CalendarEvent) : ScheduledItem {
+        override fun sortTimeOn(day: LocalDate): LocalTime = event.sortTimeOn(day)
+    }
 }
 
 /** Order of status groups within a section: open, then done (green), then cancelled and moved (grey). */
@@ -31,16 +50,20 @@ private fun statusRank(status: TaskStatus): Int = when (status) {
     TaskStatus.CANCELLED, TaskStatus.MOVED -> 2
 }
 
-/** Picks the tasks of [day] out of [tasks], ordered by status group within each section, plus the backlog and overdue lists. */
-fun buildDayUiState(day: LocalDate, today: LocalDate, tasks: List<Task>): DayUiState {
+/**
+ * Picks the tasks of [day] out of [tasks], ordered by status group within each section, plus the
+ * backlog and overdue lists. [events] are the calendar events of [day]; timed ones join "Scheduled".
+ */
+fun buildDayUiState(day: LocalDate, today: LocalDate, tasks: List<Task>, events: List<CalendarEvent> = emptyList()): DayUiState {
     val onDay = tasks.filter { it.day == day }
     val closedLast = compareBy<Task> { statusRank(it.status) }
+    val timed = onDay
+        .filter { it.placement is Placement.Timed }
+        .sortedWith(closedLast.thenBy { it.startTime }.thenBy { it.id })
     return DayUiState(
         day = day,
         today = today,
-        timed = onDay
-            .filter { it.placement is Placement.Timed }
-            .sortedWith(closedLast.thenBy { it.startTime }.thenBy { it.id }),
+        timed = timed,
         untimed = onDay
             .filter { it.placement is Placement.Untimed }
             .sortedWith(closedLast.thenBy { it.id }),
@@ -48,7 +71,19 @@ fun buildDayUiState(day: LocalDate, today: LocalDate, tasks: List<Task>): DayUiS
             .filter { it.day == null && it.status == TaskStatus.OPEN }
             .sortedBy { it.id },
         overdue = overdueTasks(tasks, today),
+        allDayEvents = events.filter { it.allDay },
+        scheduled = scheduledItems(day, timed, events.filter { !it.allDay }),
     )
+}
+
+/**
+ * Open timed tasks and timed events interleaved by start time (a task first on a tie), then
+ * the closed tasks in their usual order: events have no status, so they stay with the open work.
+ */
+private fun scheduledItems(day: LocalDate, timed: List<Task>, events: List<CalendarEvent>): List<ScheduledItem> {
+    val (open, closed) = timed.partition { it.status == TaskStatus.OPEN }
+    val live = open.map { ScheduledItem.TaskItem(it) } + events.map { ScheduledItem.EventItem(it) }
+    return live.sortedBy { it.sortTimeOn(day) } + closed.map { ScheduledItem.TaskItem(it) }
 }
 
 /** Tap on the checkbox: OPEN ↔ DONE; a cancelled task is restored to OPEN. */

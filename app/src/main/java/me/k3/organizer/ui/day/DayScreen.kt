@@ -1,5 +1,8 @@
 package me.k3.organizer.ui.day
 
+import android.Manifest
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animate
 import androidx.compose.animation.core.animateFloatAsState
@@ -45,6 +48,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.painterResource
@@ -63,6 +67,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import me.k3.organizer.R
 import me.k3.organizer.data.sampleTasks
+import me.k3.organizer.model.CalendarEvent
 import me.k3.organizer.model.Placement
 import me.k3.organizer.model.Task
 import me.k3.organizer.model.TaskStatus
@@ -78,9 +83,16 @@ private val dayFormat = DateTimeFormatter.ofPattern("EEEE, d MMMM")
 @Composable
 fun DayScreen(modifier: Modifier = Modifier, viewModel: DayViewModel = viewModel(factory = DayViewModel.Factory)) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
-    // Back in the app (or the screen turned on again): the date may have changed meanwhile.
+    val context = LocalContext.current
+    // Asks Android for calendar access; whatever the answer, re-read (the prompt hides once granted).
+    val calendarPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
+        viewModel.reloadEvents()
+    }
+    // Back in the app (or the screen turned on again): the date, the calendar or its permission
+    // may have changed meanwhile.
     LifecycleResumeEffect(viewModel) {
         viewModel.refreshToday()
+        viewModel.reloadEvents()
         onPauseOrDispose {}
     }
     DayContent(
@@ -97,6 +109,15 @@ fun DayScreen(modifier: Modifier = Modifier, viewModel: DayViewModel = viewModel
         onAddTask = viewModel::startNewTask,
         onOpenBacklog = viewModel::openBacklog,
         onOpenReview = viewModel::openReview,
+        calendarPrompt = if (viewModel.calendarPromptVisible) {
+            CalendarPromptActions(
+                onAllow = { calendarPermission.launch(Manifest.permission.READ_CALENDAR) },
+                onDismiss = viewModel::dismissCalendarPrompt,
+            )
+        } else {
+            null
+        },
+        onOpenEvent = { openInCalendar(context, it) },
         modifier = modifier,
     )
     viewModel.sheet?.let { sheet ->
@@ -167,6 +188,8 @@ fun DayContent(
     onAddTask: () -> Unit,
     onOpenBacklog: () -> Unit,
     onOpenReview: () -> Unit,
+    calendarPrompt: CalendarPromptActions?,
+    onOpenEvent: (CalendarEvent) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Scaffold(
@@ -177,7 +200,10 @@ fun DayContent(
             }
         },
     ) { innerPadding ->
-        DayList(state, state.today, onPreviousDay, onNextDay, onToday, onOpenBacklog, onOpenReview, taskCallbacks, Modifier.padding(innerPadding))
+        DayList(
+            state, state.today, onPreviousDay, onNextDay, onToday, onOpenBacklog, onOpenReview,
+            calendarPrompt, onOpenEvent, taskCallbacks, Modifier.padding(innerPadding),
+        )
     }
 }
 
@@ -190,6 +216,8 @@ private fun DayList(
     onToday: () -> Unit,
     onOpenBacklog: () -> Unit,
     onOpenReview: () -> Unit,
+    calendarPrompt: CalendarPromptActions?,
+    onOpenEvent: (CalendarEvent) -> Unit,
     taskCallbacks: TaskCallbacks,
     modifier: Modifier = Modifier,
 ) {
@@ -200,6 +228,9 @@ private fun DayList(
         // Overdue tasks are about today: other days are for planning, so they stay quiet.
         if (state.isToday && state.overdue.isNotEmpty()) {
             item(key = "overdue") { OverdueBanner(state.overdue.size, onOpenReview, Modifier.animateItem()) }
+        }
+        calendarPrompt?.let { actions ->
+            item(key = "calendar-prompt") { CalendarPromptBanner(actions, Modifier.animateItem()) }
         }
 
         if (state.isEmpty) {
@@ -212,21 +243,44 @@ private fun DayList(
                 )
             }
         }
-        for ((title, tasks) in listOf(R.string.day_section_timed to state.timed, R.string.day_section_untimed to state.untimed)) {
-            if (tasks.isEmpty()) continue
-            item(key = title) { SectionTitle(stringResource(title), Modifier.animateItem()) }
-            items(tasks, key = { it.id }) { task ->
-                TaskRow(
-                    task = task,
-                    today = today,
-                    callbacks = taskCallbacks,
-                    // Animates the move when a task sinks to the bottom after being closed.
-                    modifier = Modifier.animateItem(),
-                )
+
+        if (state.allDayEvents.isNotEmpty()) {
+            item(key = R.string.day_section_all_day) { SectionTitle(stringResource(R.string.day_section_all_day), Modifier.animateItem()) }
+            items(state.allDayEvents, key = ::eventKey) { event ->
+                EventRow(event, state.day, onOpen = { onOpenEvent(event) }, modifier = Modifier.animateItem())
+            }
+        }
+
+        if (state.scheduled.isNotEmpty()) {
+            item(key = R.string.day_section_timed) { SectionTitle(stringResource(R.string.day_section_timed), Modifier.animateItem()) }
+            items(
+                state.scheduled,
+                key = {
+                    when (it) {
+                        is ScheduledItem.TaskItem -> it.task.id
+                        is ScheduledItem.EventItem -> eventKey(it.event)
+                    }
+                },
+            ) { item ->
+                when (item) {
+                    is ScheduledItem.TaskItem -> TaskRow(item.task, today, taskCallbacks, Modifier.animateItem())
+                    is ScheduledItem.EventItem -> EventRow(item.event, state.day, onOpen = { onOpenEvent(item.event) }, modifier = Modifier.animateItem())
+                }
+            }
+        }
+
+        if (state.untimed.isNotEmpty()) {
+            item(key = R.string.day_section_untimed) { SectionTitle(stringResource(R.string.day_section_untimed), Modifier.animateItem()) }
+            items(state.untimed, key = { it.id }) { task ->
+                // animateItem: animates the move when a task sinks to the bottom after being closed.
+                TaskRow(task, today, taskCallbacks, Modifier.animateItem())
             }
         }
     }
 }
+
+/** List key of an event occurrence: a repeating event has one row per occurrence. Tasks use their Long id. */
+private fun eventKey(event: CalendarEvent): String = "event-${event.eventId}-${event.beginMillis}"
 
 @Composable
 private fun DayHeader(
@@ -523,8 +577,9 @@ private fun DayContentPreview() {
     val today = LocalDate.of(2026, 10, 15)
     MyOrganizerTheme {
         DayContent(
-            state = buildDayUiState(today, today, sampleTasks(today)),
+            state = buildDayUiState(today, today, sampleTasks(today), sampleEvents(today)),
             onPreviousDay = {}, onNextDay = {}, onToday = {}, taskCallbacks = TaskCallbacks.None, onAddTask = {}, onOpenBacklog = {}, onOpenReview = {},
+            calendarPrompt = null, onOpenEvent = {},
         )
     }
 }
@@ -535,8 +590,9 @@ private fun DayContentDarkPreview() {
     val today = LocalDate.of(2026, 10, 15)
     MyOrganizerTheme {
         DayContent(
-            state = buildDayUiState(today, today, sampleTasks(today)),
+            state = buildDayUiState(today, today, sampleTasks(today), sampleEvents(today)),
             onPreviousDay = {}, onNextDay = {}, onToday = {}, taskCallbacks = TaskCallbacks.None, onAddTask = {}, onOpenBacklog = {}, onOpenReview = {},
+            calendarPrompt = null, onOpenEvent = {},
         )
     }
 }
@@ -549,6 +605,7 @@ private fun DayContentYesterdayPreview() {
         DayContent(
             state = buildDayUiState(today.minusDays(1), today, sampleTasks(today)),
             onPreviousDay = {}, onNextDay = {}, onToday = {}, taskCallbacks = TaskCallbacks.None, onAddTask = {}, onOpenBacklog = {}, onOpenReview = {},
+            calendarPrompt = null, onOpenEvent = {},
         )
     }
 }
@@ -561,6 +618,7 @@ private fun DayContentEmptyPreview() {
         DayContent(
             state = buildDayUiState(today.plusDays(1), today, emptyList()),
             onPreviousDay = {}, onNextDay = {}, onToday = {}, taskCallbacks = TaskCallbacks.None, onAddTask = {}, onOpenBacklog = {}, onOpenReview = {},
+            calendarPrompt = null, onOpenEvent = {},
         )
     }
 }

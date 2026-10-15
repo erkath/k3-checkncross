@@ -10,23 +10,31 @@ import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.mapLatest
+import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import me.k3.organizer.OrganizerApp
+import me.k3.organizer.data.AppPreferences
 import me.k3.organizer.data.TaskActions
 import me.k3.organizer.data.TaskRepository
+import me.k3.organizer.data.calendar.CalendarSource
+import me.k3.organizer.model.CalendarEvent
 import me.k3.organizer.model.Task
 import java.time.LocalDate
 import java.time.LocalDateTime
 
 class DayViewModel(
     private val repository: TaskRepository,
+    private val calendar: CalendarSource,
+    private val preferences: AppPreferences,
     /** Source of the current local time; replaceable in tests. */
     private val now: () -> LocalDateTime = LocalDateTime::now,
 ) : ViewModel() {
@@ -36,8 +44,34 @@ class DayViewModel(
     private val today: LocalDate get() = todayState.value
     private val day = MutableStateFlow(today)
 
+    /** Bumped to re-read the calendar: the app is not told when events change elsewhere. */
+    private val eventsReload = MutableStateFlow(0)
+
+    private class DayEvents(val day: LocalDate, val events: List<CalendarEvent>)
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    private val events = combine(day, eventsReload) { day, _ -> day }
+        // mapLatest: when the day changes again before the read finishes, the old read is cancelled.
+        .mapLatest { day -> DayEvents(day, loadEvents(day)) }
+        // Tasks must not wait for the calendar: start with "no events for any day".
+        .onStart { emit(DayEvents(LocalDate.MIN, emptyList())) }
+
+    /** A failing calendar provider must not break the day screen: log it and show no events. */
+    private suspend fun loadEvents(day: LocalDate): List<CalendarEvent> =
+        try {
+            calendar.eventsOn(day)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.w(TAG, "Calendar read failed", e)
+            emptyList()
+        }
+
     val uiState: StateFlow<DayUiState> =
-        combine(day, todayState, repository.tasks) { day, today, tasks -> buildDayUiState(day, today, tasks) }
+        combine(day, todayState, repository.tasks, events) { day, today, tasks, events ->
+            // Events still loading for a newly shown day: show none rather than the previous day's.
+            buildDayUiState(day, today, tasks, if (events.day == day) events.events else emptyList())
+        }
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), DayUiState(day = today, today = today))
 
     fun previousDay() = day.update { it.minusDays(1) }
@@ -116,6 +150,21 @@ class DayViewModel(
     private fun reviewAction(block: suspend () -> Unit) = launchAction {
         block()
         if (repository.all().none { it.isOverdue(today) }) reviewOpen = false
+    }
+
+    /** Whether to offer showing calendar events: no access yet, and the user has not said "Not now". */
+    var calendarPromptVisible: Boolean by mutableStateOf(false)
+        private set
+
+    /** Re-reads the calendar, e.g. after access was granted or when the app comes back. */
+    fun reloadEvents() {
+        calendarPromptVisible = !calendar.hasAccess() && !preferences.calendarPromptDismissed
+        eventsReload.update { it + 1 }
+    }
+
+    fun dismissCalendarPrompt() {
+        preferences.calendarPromptDismissed = true
+        calendarPromptVisible = false
     }
 
     /** Whether the backlog sheet is shown. */
@@ -236,7 +285,7 @@ class DayViewModel(
         val Factory = viewModelFactory {
             initializer {
                 val app = this[APPLICATION_KEY] as OrganizerApp
-                DayViewModel(app.taskRepository)
+                DayViewModel(app.taskRepository, app.calendarSource, app.preferences)
             }
         }
     }

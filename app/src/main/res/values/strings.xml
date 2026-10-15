@@ -51,6 +51,12 @@
     <string name="review_later">Later</string>
     <string name="review_all_to_today">All to today</string>
 
+    <string name="day_section_all_day">All day</string>
+    <string name="event_no_title">(No title)</string>
+    <string name="calendar_prompt_text">Show events from your calendar next to your tasks? They are only read, never changed.</string>
+    <string name="calendar_prompt_allow">Allow</string>
+    <string name="calendar_prompt_not_now">Not now</string>
+
     <string name="action_add">Add</string>
     <string name="action_save">Save</string>
     <string name="action_delete">Delete</string>

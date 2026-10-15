@@ -1,5 +1,6 @@
 package me.k3.organizer.ui.day
 
+import me.k3.organizer.model.CalendarEvent
 import me.k3.organizer.model.Task
 import me.k3.organizer.model.TaskStatus
 import org.junit.Assert.assertEquals
@@ -8,6 +9,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.time.Duration
 import java.time.LocalDate
+import java.time.LocalDateTime
 import java.time.LocalTime
 
 class DayUiStateTest {
@@ -104,6 +106,49 @@ class DayUiStateTest {
         val tasks = listOf(untimed(1, mon.minusDays(1)))
         assertEquals(listOf(1L), buildDayUiState(tue, mon, tasks).overdue.map { it.id })
         assertEquals(listOf(1L), buildDayUiState(mon.minusDays(1), mon, tasks).overdue.map { it.id })
+    }
+
+    // --- calendar events ---
+
+    private fun event(id: Long, start: LocalDateTime, end: LocalDateTime, allDay: Boolean = false) =
+        CalendarEvent(id, "e$id", allDay, start, end, color = null, location = null, beginMillis = 0, endMillis = 0)
+
+    private fun ids(items: List<ScheduledItem>) = items.map {
+        when (it) {
+            is ScheduledItem.TaskItem -> "t${it.task.id}"
+            is ScheduledItem.EventItem -> "e${it.event.eventId}"
+        }
+    }
+
+    @Test
+    fun scheduled_interleavesEventsWithOpenTasks_closedTasksLast() {
+        val tasks = listOf(timed(1, mon, 9), timed(2, mon, 14), timed(3, mon, 8).markDone())
+        val events = listOf(event(10, mon.atTime(11, 0), mon.atTime(12, 0)), event(11, mon.atTime(7, 0), mon.atTime(7, 30)))
+
+        val state = buildDayUiState(mon, mon, tasks, events)
+
+        assertEquals(listOf("e11", "t1", "e10", "t2", "t3"), ids(state.scheduled))
+        // The task-only list keeps its meaning.
+        assertEquals(listOf(1L, 2L, 3L), state.timed.map { it.id })
+    }
+
+    @Test
+    fun scheduled_taskBeforeEventOnTie_eventFromYesterdayFirst() {
+        val events = listOf(
+            event(10, mon.atTime(9, 0), mon.atTime(10, 0)),
+            event(11, mon.minusDays(1).atTime(22, 0), mon.atTime(1, 0)),
+        )
+        assertEquals(listOf("e11", "t1", "e10"), ids(buildDayUiState(mon, mon, listOf(timed(1, mon, 9)), events).scheduled))
+    }
+
+    @Test
+    fun allDayEvents_separate_andCountForEmptyDay() {
+        val holiday = event(20, mon.atStartOfDay(), tue.atStartOfDay(), allDay = true)
+        val state = buildDayUiState(mon, mon, emptyList(), listOf(holiday))
+
+        assertEquals(listOf(holiday), state.allDayEvents)
+        assertTrue(state.scheduled.isEmpty())
+        assertFalse(state.isEmpty)
     }
 
     // --- the date changing ---
