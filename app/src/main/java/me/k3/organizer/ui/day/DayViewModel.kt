@@ -1,5 +1,6 @@
 package me.k3.organizer.ui.day
 
+import android.util.Log
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -8,6 +9,7 @@ import androidx.lifecycle.ViewModelProvider.AndroidViewModelFactory.Companion.AP
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -41,7 +43,7 @@ class DayViewModel(
     fun onSwipeLeft(taskId: Long) = updateTask(taskId, ::swipeLeft)
 
     fun onSwipeRight(taskId: Long) {
-        viewModelScope.launch {
+        launchAction {
             val task = actions.find(taskId)
             actions.move(taskId, nextDayTarget(task, today))
         }
@@ -59,9 +61,9 @@ class DayViewModel(
     }
 
     fun openTask(taskId: Long) {
-        viewModelScope.launch {
+        launchAction {
             val all = repository.all()
-            val task = all.first { it.id == taskId }
+            val task = all.firstOrNull { it.id == taskId } ?: return@launchAction
             sheet = TaskSheetState(TaskForm.from(task), task, TaskActions.canUndoMove(all, task))
         }
     }
@@ -85,7 +87,7 @@ class DayViewModel(
         val current = sheet?.takeIf { it.form.canSave } ?: return
         val shownDay = day.value
         sheet = null
-        viewModelScope.launch {
+        launchAction {
             val task = current.task
             if (task == null) repository.add(current.form.toTask(shownDay)) else repository.update(task.id, current.form::applyTo)
         }
@@ -96,7 +98,7 @@ class DayViewModel(
         val current = sheet?.takeIf { it.canMove && it.form.canSave } ?: return
         val id = current.task!!.id
         sheet = null
-        viewModelScope.launch {
+        launchAction {
             repository.update(id, current.form::applyTo)
             if (target == null) actions.toBacklog(id) else actions.move(id, target)
         }
@@ -105,20 +107,40 @@ class DayViewModel(
     fun undoMoveFromSheet() {
         val current = sheet?.takeIf { it.canUndoMove } ?: return
         sheet = null
-        viewModelScope.launch { actions.undoMove(current.task!!.id) }
+        launchAction { actions.undoMove(current.task!!.id) }
     }
 
     fun deleteFromSheet() {
         val id = sheet?.task?.id ?: return
         sheet = null
-        viewModelScope.launch { actions.delete(id) }
+        launchAction { actions.delete(id) }
     }
 
     private fun updateTask(taskId: Long, transform: (Task) -> Task) {
-        viewModelScope.launch { repository.update(taskId, transform) }
+        launchAction { repository.update(taskId, transform) }
+    }
+
+    /**
+     * Runs a repository action. One based on a stale screen (a double swipe, a task changed
+     * meanwhile) fails its checks; it is dropped and logged instead of crashing the app.
+     */
+    private fun launchAction(block: suspend () -> Unit) {
+        viewModelScope.launch {
+            try {
+                block()
+            } catch (e: CancellationException) {
+                throw e // a subclass of IllegalStateException; must reach the coroutine machinery
+            } catch (e: IllegalStateException) {
+                Log.w(TAG, "Dropped stale action", e)
+            } catch (e: IllegalArgumentException) {
+                Log.w(TAG, "Dropped stale action", e)
+            }
+        }
     }
 
     companion object {
+        private const val TAG = "DayViewModel"
+
         val Factory = viewModelFactory {
             initializer {
                 val app = this[APPLICATION_KEY] as OrganizerApp

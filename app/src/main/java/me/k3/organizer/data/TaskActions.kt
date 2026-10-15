@@ -1,51 +1,105 @@
 package me.k3.organizer.data
 
 import me.k3.organizer.model.Task
-import me.k3.organizer.model.TaskMove
 import me.k3.organizer.model.TaskStatus
+import java.time.Duration
 import java.time.LocalDate
+import java.time.LocalTime
 
 /**
  * Operations that touch more than one task. Each runs in one transaction, so a failure
  * halfway (say, after marking the old task MOVED) leaves the database unchanged.
+ *
+ * Moves form a chain: each MOVED task is followed by the copy whose [Task.movedFrom] points
+ * at it. The last task of a chain (its head) is the one that is still live.
  */
 class TaskActions(private val repository: TaskRepository) {
 
-    suspend fun find(id: Long): Task =
-        repository.all().firstOrNull { it.id == id } ?: throw IllegalArgumentException("no task with id $id")
+    suspend fun find(id: Long): Task = find(repository.all(), id)
 
-    /** Postpones a task to [newDay], keeping its time. Returns the new copy. */
+    /**
+     * Postpones a task to [newDay], keeping its time. If the task has been on [newDay] before,
+     * it returns there instead of creating a duplicate: see [revertTo]. Returns the live task.
+     */
     suspend fun move(id: Long, newDay: LocalDate): Task = repository.inTransaction {
-        val task = find(id)
-        apply(task.moveTo(newDay, task.startTime, task.duration))
+        val all = repository.all()
+        val task = find(all, id)
+        check(task.status == TaskStatus.OPEN) { "task $id is ${task.status}, not OPEN" }
+        val earlier = chainBefore(all, task).lastOrNull { it.day == newDay }
+        if (earlier != null) {
+            revertTo(all, earlier, task.startTime, task.duration)
+        } else {
+            val move = task.moveTo(newDay, task.startTime, task.duration)
+            repository.update(id) { move.old }
+            repository.add(move.new)
+        }
     }
 
     /** Sends a dated task back to the backlog. Returns the new copy. */
-    suspend fun toBacklog(id: Long): Task = repository.inTransaction { apply(find(id).toBacklog()) }
+    suspend fun toBacklog(id: Long): Task = repository.inTransaction {
+        val move = find(id).toBacklog()
+        repository.update(id) { move.old }
+        repository.add(move.new)
+    }
 
-    /** Reverts a move: the MOVED task is open again and its copy is deleted. */
-    suspend fun undoMove(id: Long) = repository.inTransaction {
+    /** Reverts all moves made after the MOVED task [id]: it is open again, with its own time. */
+    suspend fun undoMove(id: Long): Task = repository.inTransaction {
         val all = repository.all()
-        val task = all.firstOrNull { it.id == id } ?: throw IllegalArgumentException("no task with id $id")
-        val copy = movedCopy(all, task)
-        check(copy != null && copy.status == TaskStatus.OPEN) { "move of task $id cannot be undone" }
-        repository.delete(copy.id)
-        repository.update(id) { it.reopen() }
+        val task = find(all, id)
+        check(canUndoMove(all, task)) { "move of task $id cannot be undone" }
+        revertTo(all, task, task.startTime, task.duration)
     }
 
     suspend fun delete(id: Long) = repository.delete(id)
 
-    private suspend fun apply(move: TaskMove): Task {
-        repository.update(move.old.id) { move.old }
-        return repository.add(move.new)
+    /**
+     * Makes [target] (a MOVED task earlier in a chain) live again: deletes every later task
+     * of the chain and reopens [target] with the head's title and note and the given time.
+     * The head must still be OPEN, so no check, cross or further move is lost.
+     */
+    private suspend fun revertTo(all: List<Task>, target: Task, startTime: LocalTime?, duration: Duration?): Task {
+        val later = chainAfter(all, target)
+        val head = later.last()
+        check(head.status == TaskStatus.OPEN) { "chain head ${head.id} is ${head.status}" }
+        later.forEach { repository.delete(it.id) }
+        repository.update(target.id) {
+            it.reopen()
+                .copy(title = head.title, note = head.note)
+                .schedule(checkNotNull(it.day), startTime, duration)
+        }
+        return find(target.id)
     }
 
     companion object {
-        private fun movedCopy(all: List<Task>, task: Task): Task? =
-            if (task.status == TaskStatus.MOVED) all.firstOrNull { it.movedFrom == task.id } else null
+        private fun find(all: List<Task>, id: Long): Task =
+            all.firstOrNull { it.id == id } ?: throw IllegalArgumentException("no task with id $id")
 
-        /** Undo is safe only while the copy is still untouched: open and not moved further. */
+        /** Tasks this one was moved from, oldest first (not including [task]). */
+        fun chainBefore(all: List<Task>, task: Task): List<Task> {
+            val byId = all.associateBy { it.id }
+            val result = ArrayDeque<Task>()
+            var current = task.movedFrom?.let(byId::get)
+            while (current != null && result.size < all.size) {
+                result.addFirst(current)
+                current = current.movedFrom?.let(byId::get)
+            }
+            return result
+        }
+
+        /** Copies made from this task onwards, in order (not including [task]); the last one is the head. */
+        fun chainAfter(all: List<Task>, task: Task): List<Task> {
+            val next = all.filter { it.movedFrom != null }.associateBy { it.movedFrom }
+            val result = mutableListOf<Task>()
+            var current = next[task.id]
+            while (current != null && result.size < all.size) {
+                result += current
+                current = next[current.id]
+            }
+            return result
+        }
+
+        /** Undo is safe while the chain's head is still open: no check, cross or edit of status would be lost. */
         fun canUndoMove(all: List<Task>, task: Task): Boolean =
-            movedCopy(all, task)?.status == TaskStatus.OPEN
+            task.status == TaskStatus.MOVED && chainAfter(all, task).lastOrNull()?.status == TaskStatus.OPEN
     }
 }

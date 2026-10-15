@@ -17,6 +17,7 @@ import java.time.LocalTime
 class TaskActionsTest {
     private val mon = LocalDate.of(2026, 10, 12)
     private val tue = mon.plusDays(1)
+    private val wed = mon.plusDays(2)
     private val nine = LocalTime.of(9, 0)
     private val hour = Duration.ofHours(1)
 
@@ -70,10 +71,84 @@ class TaskActionsTest {
     }
 
     @Test
-    fun undoMove_notAllowed_whenCopyMovedAgain() = runBlocking {
+    fun undoMove_revertsWholeChain() = runBlocking {
         val copy = actions.move(1, tue)
-        actions.move(copy.id, tue.plusDays(1))
+        actions.move(copy.id, wed)
+        assertTrue(TaskActions.canUndoMove(repo.tasks.value, task(1)))
+
+        actions.undoMove(1)
+
+        assertEquals(listOf(1L, 2L), repo.tasks.value.map { it.id })
+        assertEquals(Placement.Timed(mon, nine, hour), task(1).placement)
+        assertEquals(TaskStatus.OPEN, task(1).status)
+    }
+
+    @Test
+    fun undoMove_notAllowed_whenChainHeadIsClosed() = runBlocking {
+        val copy = actions.move(1, tue)
+        val head = actions.move(copy.id, wed)
+        repo.update(head.id) { it.cancel() }
         assertFalse(TaskActions.canUndoMove(repo.tasks.value, task(1)))
+        assertFalse(TaskActions.canUndoMove(repo.tasks.value, task(copy.id)))
+    }
+
+    // --- moving back to a day the task has been on ---
+
+    @Test
+    fun moveBack_reusesOriginal_insteadOfDuplicate() = runBlocking {
+        val copy = actions.move(2, tue)
+        val back = actions.move(copy.id, mon)
+
+        assertEquals(2L, back.id)
+        assertEquals(listOf(1L, 2L), repo.tasks.value.map { it.id })
+        assertEquals(TaskStatus.OPEN, task(2).status)
+        assertNull(task(2).movedTo)
+        assertEquals(mon, task(2).day)
+    }
+
+    @Test
+    fun moveBack_overSeveralDays_dropsTheDetour() = runBlocking {
+        val tueCopy = actions.move(2, tue)
+        val wedCopy = actions.move(tueCopy.id, wed)
+        val back = actions.move(wedCopy.id, tue)
+
+        // Back on Tuesday: the Tuesday entry is live again, Wednesday's copy is gone, Monday keeps its trace.
+        assertEquals(tueCopy.id, back.id)
+        assertEquals(listOf(1L, 2L, tueCopy.id), repo.tasks.value.map { it.id })
+        assertEquals(TaskStatus.MOVED, task(2).status)
+        assertEquals(TaskStatus.OPEN, task(tueCopy.id).status)
+        assertEquals(listOf(task(2)), TaskActions.chainBefore(repo.tasks.value, task(tueCopy.id)))
+    }
+
+    @Test
+    fun moveBack_keepsLatestTitleNoteAndTime() = runBlocking {
+        val copy = actions.move(1, tue)
+        repo.update(copy.id) {
+            it.copy(title = "Dentist (new clinic)", note = "3rd floor").schedule(tue, LocalTime.of(15, 0), hour)
+        }
+
+        actions.move(copy.id, mon)
+
+        assertEquals("Dentist (new clinic)", task(1).title)
+        assertEquals("3rd floor", task(1).note)
+        assertEquals(Placement.Timed(mon, LocalTime.of(15, 0), hour), task(1).placement)
+    }
+
+    @Test
+    fun move_closedTask_rejected() = runBlocking<Unit> {
+        repo.update(2) { it.markDone() }
+        assertThrows(IllegalStateException::class.java) { runBlocking { actions.move(2, tue) } }
+    }
+
+    @Test
+    fun chains_followLinksBothWays() = runBlocking {
+        val tueCopy = actions.move(2, tue)
+        val wedCopy = actions.move(tueCopy.id, wed)
+        val all = repo.tasks.value
+
+        assertEquals(listOf(2L, tueCopy.id), TaskActions.chainBefore(all, wedCopy).map { it.id })
+        assertEquals(listOf(tueCopy.id, wedCopy.id), TaskActions.chainAfter(all, task(2)).map { it.id })
+        assertEquals(emptyList<Task>(), TaskActions.chainAfter(all, wedCopy))
     }
 
     @Test
