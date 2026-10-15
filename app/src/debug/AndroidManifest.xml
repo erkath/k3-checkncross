@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- Debug builds only, for AndroidCalendarSourceTest, which creates and then deletes a throwaway
+         local calendar. The app never requests this permission and never writes to the calendar. -->
+    <uses-permission android:name="android.permission.WRITE_CALENDAR" />
+
+</manifest>
