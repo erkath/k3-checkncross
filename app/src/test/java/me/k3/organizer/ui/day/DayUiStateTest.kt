@@ -36,21 +36,22 @@ class DayUiStateTest {
     }
 
     @Test
-    fun untimed_openFirst_thenCreationOrder() {
-        val tasks = listOf(untimed(4, mon), untimed(1, mon).markDone(), untimed(2, mon).cancel(), untimed(3, mon))
-        assertEquals(listOf(3L, 4L, 1L, 2L), buildDayUiState(mon, mon, tasks).untimed.map { it.id })
+    fun untimed_openThenDoneThenGrey_eachInCreationOrder() {
+        val tasks = listOf(untimed(4, mon), untimed(1, mon).cancel(), untimed(2, mon).markDone(), untimed(3, mon), untimed(5, mon).markDone())
+        assertEquals(listOf(3L, 4L, 2L, 5L, 1L), buildDayUiState(mon, mon, tasks).untimed.map { it.id })
     }
 
     @Test
-    fun timed_closedSinkBelowOpen() {
+    fun timed_greyBelowDone_evenIfEarlier() {
         val tasks = listOf(timed(1, mon, 9).markDone(), timed(2, mon, 14), timed(3, mon, 8).cancel())
-        assertEquals(listOf(2L, 3L, 1L), buildDayUiState(mon, mon, tasks).timed.map { it.id })
+        assertEquals(listOf(2L, 1L, 3L), buildDayUiState(mon, mon, tasks).timed.map { it.id })
     }
 
     @Test
-    fun movedTask_sinksToo() {
+    fun movedTask_sinksBelowDone() {
         val moved = untimed(1, mon).moveTo(tue).old
-        assertEquals(listOf(2L, 1L), buildDayUiState(mon, mon, listOf(moved, untimed(2, mon))).untimed.map { it.id })
+        val tasks = listOf(moved, untimed(2, mon), untimed(3, mon).markDone())
+        assertEquals(listOf(2L, 3L, 1L), buildDayUiState(mon, mon, tasks).untimed.map { it.id })
     }
 
     // --- gestures ---

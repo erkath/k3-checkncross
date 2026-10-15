@@ -8,18 +8,25 @@ import java.time.LocalDate
 data class DayUiState(
     val day: LocalDate,
     val isToday: Boolean,
-    /** Tasks with a start time: open ones first, each group by start time. */
+    /** Tasks with a start time: open, then done, then cancelled/moved; each group by start time. */
     val timed: List<Task> = emptyList(),
-    /** Tasks on this day without a time: open ones first, each group in creation order. */
+    /** Tasks on this day without a time: open, then done, then cancelled/moved; each group in creation order. */
     val untimed: List<Task> = emptyList(),
 ) {
     val isEmpty: Boolean get() = timed.isEmpty() && untimed.isEmpty()
 }
 
-/** Picks the tasks of [day] out of [tasks]. Closed and MOVED tasks sink to the bottom of their section. */
+/** Order of status groups within a section: open, then done (green), then cancelled and moved (grey). */
+private fun statusRank(status: TaskStatus): Int = when (status) {
+    TaskStatus.OPEN -> 0
+    TaskStatus.DONE -> 1
+    TaskStatus.CANCELLED, TaskStatus.MOVED -> 2
+}
+
+/** Picks the tasks of [day] out of [tasks], ordered by status group within each section. */
 fun buildDayUiState(day: LocalDate, today: LocalDate, tasks: List<Task>): DayUiState {
     val onDay = tasks.filter { it.day == day }
-    val closedLast = compareBy<Task> { it.status != TaskStatus.OPEN }
+    val closedLast = compareBy<Task> { statusRank(it.status) }
     return DayUiState(
         day = day,
         isToday = day == today,

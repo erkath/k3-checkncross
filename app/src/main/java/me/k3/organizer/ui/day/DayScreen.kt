@@ -1,36 +1,46 @@
 package me.k3.organizer.ui.day
 
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.animate
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.Orientation
+import androidx.compose.foundation.gestures.draggable
+import androidx.compose.foundation.gestures.rememberDraggableState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.SwipeToDismissBox
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.CustomAccessibilityAction
@@ -40,10 +50,10 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
-import kotlinx.coroutines.launch
 import me.k3.organizer.R
 import me.k3.organizer.data.sampleTasks
 import me.k3.organizer.model.Placement
@@ -53,6 +63,7 @@ import me.k3.organizer.ui.theme.LocalStatusColors
 import me.k3.organizer.ui.theme.MyOrganizerTheme
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
+import kotlin.math.roundToInt
 
 private val dayFormat = DateTimeFormatter.ofPattern("EEEE, d MMMM")
 private val shortDayFormat = DateTimeFormatter.ofPattern("EEE, d MMM")
@@ -145,24 +156,30 @@ private fun SectionTitle(text: String, modifier: Modifier = Modifier) {
     )
 }
 
-/** A task row; swiping it left crosses the task out (or restores a crossed one). */
-@OptIn(ExperimentalMaterial3Api::class)
+/**
+ * A task row; swiping it left crosses the task out (or restores a crossed one).
+ * The row slides back first and only then the action fires, so the slide-back and
+ * the task sinking to the bottom of the list do not run at the same time.
+ */
 @Composable
 private fun TaskRow(task: Task, onCheckboxTap: () -> Unit, onSwipeLeft: () -> Unit, modifier: Modifier = Modifier) {
-    val swipeState = rememberSwipeToDismissBoxState()
-    val scope = rememberCoroutineScope()
+    val density = LocalDensity.current
+    val haptics = LocalHapticFeedback.current
+    val limits = remember(density) {
+        with(density) {
+            SwipeLimits(max = 120.dp.toPx(), threshold = 72.dp.toPx(), minFling = 24.dp.toPx(), flingVelocity = 1000.dp.toPx())
+        }
+    }
+    var offset by remember { mutableFloatStateOf(0f) }
+    val currentOnSwipeLeft by rememberUpdatedState(onSwipeLeft)
+    val dragState = rememberDraggableState { delta ->
+        val wasArmed = limits.isArmed(offset)
+        offset = limits.clamp(offset + delta)
+        if (!wasArmed && limits.isArmed(offset)) haptics.performHapticFeedback(HapticFeedbackType.GestureThresholdActivate)
+    }
     val swipeLabel = stringResource(if (task.status == TaskStatus.CANCELLED) R.string.task_restore else R.string.task_cancel)
 
-    SwipeToDismissBox(
-        state = swipeState,
-        enableDismissFromStartToEnd = false,
-        enableDismissFromEndToStart = canSwipeLeft(task),
-        // The row is not removed: apply the action, then slide the row back in place.
-        onDismiss = {
-            onSwipeLeft()
-            scope.launch { swipeState.reset() }
-        },
-        backgroundContent = { SwipeBackground(restore = task.status == TaskStatus.CANCELLED) },
+    Box(
         modifier = modifier.semantics {
             // Swipes are invisible to TalkBack, so offer the same action in its menu.
             if (canSwipeLeft(task)) {
@@ -170,23 +187,51 @@ private fun TaskRow(task: Task, onCheckboxTap: () -> Unit, onSwipeLeft: () -> Un
             }
         },
     ) {
-        TaskRowContent(task, onCheckboxTap)
+        if (offset < 0f) {
+            SwipeBackground(
+                restore = task.status == TaskStatus.CANCELLED,
+                armed = limits.isArmed(offset),
+                modifier = Modifier.matchParentSize(),
+            )
+        }
+        Box(
+            modifier = Modifier
+                .offset { IntOffset(offset.roundToInt(), 0) }
+                .draggable(
+                    state = dragState,
+                    orientation = Orientation.Horizontal,
+                    enabled = canSwipeLeft(task),
+                    onDragStopped = { velocity ->
+                        val fire = limits.shouldFire(offset, velocity)
+                        animate(offset, 0f, animationSpec = tween(200)) { value, _ -> offset = value }
+                        if (fire) currentOnSwipeLeft()
+                    },
+                ),
+        ) {
+            TaskRowContent(task, onCheckboxTap)
+        }
     }
 }
 
+/** What shows under the row while it is dragged; gets stronger once releasing would act. */
 @Composable
-private fun SwipeBackground(restore: Boolean) {
+private fun SwipeBackground(restore: Boolean, armed: Boolean, modifier: Modifier = Modifier) {
+    val colors = MaterialTheme.colorScheme
+    val background by animateColorAsState(
+        if (armed) colors.outline else colors.surfaceContainerHighest,
+        label = "swipeBackground",
+    )
+    val tint by animateColorAsState(if (armed) colors.surface else colors.onSurfaceVariant, label = "swipeIcon")
+    val scale by animateFloatAsState(if (armed) 1.2f else 1f, label = "swipeIconScale")
     Box(
         contentAlignment = Alignment.CenterEnd,
-        modifier = Modifier
-            .fillMaxSize()
-            .background(MaterialTheme.colorScheme.surfaceContainerHighest)
-            .padding(horizontal = 24.dp),
+        modifier = modifier.background(background).padding(horizontal = 24.dp),
     ) {
         Icon(
             painterResource(if (restore) R.drawable.ic_undo else R.drawable.ic_close),
             contentDescription = null,
-            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            tint = tint,
+            modifier = Modifier.scale(scale),
         )
     }
 }
