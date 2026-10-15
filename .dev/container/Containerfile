@@ -1,0 +1,61 @@
+# Sandbox for Android development with an AI agent.
+# Built with docker build (also works with podman). The project is NOT copied into the image, but mounted instead (see run.sh).
+
+FROM debian:trixie
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+# --- System packages ---
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        openjdk-21-jdk-headless \
+        ca-certificates curl wget unzip \
+        git less procps ripgrep \
+ && rm -rf /var/lib/apt/lists/*
+
+
+# --- User without sudo, with same UID/GID ---
+ARG USER_UID=1000
+ARG USER_GID=1000
+RUN groupadd --gid "${USER_GID}" dev \
+ && useradd --uid "${USER_UID}" --gid "${USER_GID}" -m -s /bin/bash dev
+
+# --- Android SDK ---------------------------------------------------------------
+# Version and SHA-256 on https://developer.android.com/studio
+ARG CMDLINE_TOOLS_VERSION=15859902
+ARG CMDLINE_TOOLS_SHA256=4e4c464f145a7512b57d088ac6c278c03c9eea610886b35a5e0804e74eedf583
+ARG ANDROID_PLATFORM=android-37.0
+
+ENV ANDROID_HOME=/opt/android-sdk
+ENV PATH=${PATH}:${ANDROID_HOME}/cmdline-tools/latest/bin:${ANDROID_HOME}/platform-tools
+
+
+RUN mkdir -p "${ANDROID_HOME}/cmdline-tools" \
+ && wget -q "https://dl.google.com/android/repository/commandlinetools-linux-${CMDLINE_TOOLS_VERSION}_latest.zip" -O /tmp/tools.zip \
+ && echo "${CMDLINE_TOOLS_SHA256}  /tmp/tools.zip" | sha256sum -c - \
+ && unzip -q /tmp/tools.zip -d "${ANDROID_HOME}/cmdline-tools" \
+ && mv "${ANDROID_HOME}/cmdline-tools/cmdline-tools" "${ANDROID_HOME}/cmdline-tools/latest" \
+ && rm /tmp/tools.zip \
+ && yes | sdkmanager --licenses > /dev/null \
+ && sdkmanager "platform-tools" "platforms;${ANDROID_PLATFORM}" \
+ && chown -R dev:dev "${ANDROID_HOME}"
+
+# build-tools не ставим: Gradle сам докачает нужную версию (SDK принадлежит dev).
+
+# --- Агент (Claude Code) -------------------------------------------------------
+USER dev
+WORKDIR /home/dev
+
+RUN curl -fsSL https://claude.ai/install.sh -o /tmp/install.sh \
+ && head -1 /tmp/install.sh | grep -q '^#!' \
+ && bash /tmp/install.sh \
+ && rm /tmp/install.sh \
+ && ls -la /home/dev/.local/bin/claude
+
+ENV PATH=/home/dev/.local/bin:${PATH}
+# config & login stored in a separate volume.
+ENV CLAUDE_CONFIG_DIR=/home/dev/.claude
+RUN mkdir -p /home/dev/.claude /home/dev/.gradle
+
+WORKDIR /work
+CMD ["bash"]
+
