@@ -50,3 +50,16 @@ fun canTapCheckbox(task: Task): Boolean = task.status != TaskStatus.MOVED
 
 fun canSwipeLeft(task: Task): Boolean =
     task.status == TaskStatus.OPEN || task.status == TaskStatus.CANCELLED
+
+/** Swipe right: move to the next day. Only an open task on a day can be moved. */
+fun canSwipeRight(task: Task): Boolean = task.status == TaskStatus.OPEN && task.day != null
+
+/** Where swipe right sends [task]: the day after its own, but never into the past. */
+fun nextDayTarget(task: Task, today: LocalDate): LocalDate {
+    val day = checkNotNull(task.day) { "backlog task has no next day" }
+    return maxOf(day.plusDays(1), today)
+}
+
+/** A day the task can be moved to from the date picker: today or later, and not its own day. */
+fun isValidMoveTarget(date: LocalDate, task: Task, today: LocalDate): Boolean =
+    date >= today && date != task.day

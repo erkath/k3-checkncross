@@ -13,7 +13,9 @@ import androidx.compose.foundation.gestures.rememberDraggableState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
@@ -21,10 +23,12 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -66,7 +70,6 @@ import java.time.format.DateTimeFormatter
 import kotlin.math.roundToInt
 
 private val dayFormat = DateTimeFormatter.ofPattern("EEEE, d MMMM")
-private val shortDayFormat = DateTimeFormatter.ofPattern("EEE, d MMM")
 
 /** Day screen bound to its ViewModel. */
 @Composable
@@ -74,27 +77,90 @@ fun DayScreen(modifier: Modifier = Modifier, viewModel: DayViewModel = viewModel
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     DayContent(
         state = state,
+        today = viewModel.today,
         onPreviousDay = viewModel::previousDay,
         onNextDay = viewModel::nextDay,
         onToday = viewModel::goToToday,
-        onCheckboxTap = viewModel::onCheckboxTap,
-        onSwipeLeft = viewModel::onSwipeLeft,
+        taskCallbacks = TaskCallbacks(
+            onOpen = viewModel::openTask,
+            onCheckboxTap = viewModel::onCheckboxTap,
+            onSwipeLeft = viewModel::onSwipeLeft,
+            onSwipeRight = viewModel::onSwipeRight,
+        ),
+        onAddTask = viewModel::startNewTask,
         modifier = modifier,
     )
+    viewModel.sheet?.let { sheet ->
+        TaskSheet(
+            sheet = sheet,
+            day = state.day,
+            today = viewModel.today,
+            actions = TaskSheetActions(
+                onChange = viewModel::editSheetForm,
+                onTimeEnabled = viewModel::setSheetTimeEnabled,
+                onSave = viewModel::saveSheet,
+                onMove = viewModel::moveFromSheet,
+                onUndoMove = viewModel::undoMoveFromSheet,
+                onDelete = viewModel::deleteFromSheet,
+                onDismiss = viewModel::closeSheet,
+            ),
+        )
+    }
+}
+
+/** What can be done to a task in the list; each callback gets the task id. */
+class TaskCallbacks(
+    val onOpen: (Long) -> Unit,
+    val onCheckboxTap: (Long) -> Unit,
+    val onSwipeLeft: (Long) -> Unit,
+    val onSwipeRight: (Long) -> Unit,
+) {
+    companion object {
+        val None = TaskCallbacks({}, {}, {}, {})
+    }
 }
 
 /** Stateless day screen: draws [state] and reports user actions. */
 @Composable
 fun DayContent(
     state: DayUiState,
+    today: LocalDate,
     onPreviousDay: () -> Unit,
     onNextDay: () -> Unit,
     onToday: () -> Unit,
-    onCheckboxTap: (Long) -> Unit,
-    onSwipeLeft: (Long) -> Unit,
+    taskCallbacks: TaskCallbacks,
+    onAddTask: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    LazyColumn(modifier = modifier.fillMaxWidth()) {
+    Scaffold(
+        modifier = modifier.fillMaxSize(),
+        floatingActionButton = {
+            FloatingActionButton(onClick = onAddTask) {
+                Icon(painterResource(R.drawable.ic_add), contentDescription = stringResource(R.string.day_add_task))
+            }
+        },
+    ) { innerPadding ->
+        DayList(state, today, onPreviousDay, onNextDay, onToday, taskCallbacks, Modifier.padding(innerPadding))
+    }
+}
+
+@Composable
+private fun DayList(
+    state: DayUiState,
+    today: LocalDate,
+    onPreviousDay: () -> Unit,
+    onNextDay: () -> Unit,
+    onToday: () -> Unit,
+    taskCallbacks: TaskCallbacks,
+    modifier: Modifier = Modifier,
+) {
+
+
+
+
+
+    // Bottom padding keeps the last task clear of the floating "+" button.
+    LazyColumn(modifier = modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 88.dp)) {
         item { DayHeader(state, onPreviousDay, onNextDay, onToday) }
 
         if (state.isEmpty) {
@@ -113,8 +179,8 @@ fun DayContent(
             items(tasks, key = { it.id }) { task ->
                 TaskRow(
                     task = task,
-                    onCheckboxTap = { onCheckboxTap(task.id) },
-                    onSwipeLeft = { onSwipeLeft(task.id) },
+                    today = today,
+                    callbacks = taskCallbacks,
                     // Animates the move when a task sinks to the bottom after being closed.
                     modifier = Modifier.animateItem(),
                 )
@@ -157,12 +223,12 @@ private fun SectionTitle(text: String, modifier: Modifier = Modifier) {
 }
 
 /**
- * A task row; swiping it left crosses the task out (or restores a crossed one).
- * The row slides back first and only then the action fires, so the slide-back and
- * the task sinking to the bottom of the list do not run at the same time.
+ * A task row. Tap opens the task; swipe left crosses it out (or restores a crossed one);
+ * swipe right moves it to the next day. The row slides back first and only then the action
+ * fires, so the slide-back and the task moving within the list do not run at the same time.
  */
 @Composable
-private fun TaskRow(task: Task, onCheckboxTap: () -> Unit, onSwipeLeft: () -> Unit, modifier: Modifier = Modifier) {
+private fun TaskRow(task: Task, today: LocalDate, callbacks: TaskCallbacks, modifier: Modifier = Modifier) {
     val density = LocalDensity.current
     val haptics = LocalHapticFeedback.current
     val limits = remember(density) {
@@ -170,27 +236,34 @@ private fun TaskRow(task: Task, onCheckboxTap: () -> Unit, onSwipeLeft: () -> Un
             SwipeLimits(max = 120.dp.toPx(), threshold = 72.dp.toPx(), minFling = 24.dp.toPx(), flingVelocity = 1000.dp.toPx())
         }
     }
+    val allowLeft = canSwipeLeft(task)
+    val allowRight = canSwipeRight(task)
     var offset by remember { mutableFloatStateOf(0f) }
-    val currentOnSwipeLeft by rememberUpdatedState(onSwipeLeft)
+    val currentTask by rememberUpdatedState(task)
+    val currentCallbacks by rememberUpdatedState(callbacks)
     val dragState = rememberDraggableState { delta ->
-        val wasArmed = limits.isArmed(offset)
-        offset = limits.clamp(offset + delta)
-        if (!wasArmed && limits.isArmed(offset)) haptics.performHapticFeedback(HapticFeedbackType.GestureThresholdActivate)
+        val wasArmed = limits.armedDirection(offset)
+        offset = limits.clamp(offset + delta, allowLeft, allowRight)
+        val armed = limits.armedDirection(offset)
+        if (armed != null && armed != wasArmed) haptics.performHapticFeedback(HapticFeedbackType.GestureThresholdActivate)
     }
-    val swipeLabel = stringResource(if (task.status == TaskStatus.CANCELLED) R.string.task_restore else R.string.task_cancel)
+    val leftLabel = stringResource(if (task.status == TaskStatus.CANCELLED) R.string.task_restore else R.string.task_cancel)
+    val rightLabel = stringResource(R.string.task_move_next_day)
 
     Box(
         modifier = modifier.semantics {
-            // Swipes are invisible to TalkBack, so offer the same action in its menu.
-            if (canSwipeLeft(task)) {
-                customActions = listOf(CustomAccessibilityAction(swipeLabel) { onSwipeLeft(); true })
+            // Swipes are invisible to TalkBack, so offer the same actions in its menu.
+            customActions = buildList {
+                if (allowLeft) add(CustomAccessibilityAction(leftLabel) { callbacks.onSwipeLeft(task.id); true })
+                if (allowRight) add(CustomAccessibilityAction(rightLabel) { callbacks.onSwipeRight(task.id); true })
             }
         },
     ) {
-        if (offset < 0f) {
+        if (offset != 0f) {
             SwipeBackground(
+                direction = if (offset < 0f) SwipeDirection.LEFT else SwipeDirection.RIGHT,
                 restore = task.status == TaskStatus.CANCELLED,
-                armed = limits.isArmed(offset),
+                armed = limits.armedDirection(offset) != null,
                 modifier = Modifier.matchParentSize(),
             )
         }
@@ -200,44 +273,57 @@ private fun TaskRow(task: Task, onCheckboxTap: () -> Unit, onSwipeLeft: () -> Un
                 .draggable(
                     state = dragState,
                     orientation = Orientation.Horizontal,
-                    enabled = canSwipeLeft(task),
+                    enabled = allowLeft || allowRight,
                     onDragStopped = { velocity ->
-                        val fire = limits.shouldFire(offset, velocity)
+                        val fired = limits.release(offset, velocity)
                         animate(offset, 0f, animationSpec = tween(200)) { value, _ -> offset = value }
-                        if (fire) currentOnSwipeLeft()
+                        when (fired) {
+                            SwipeDirection.LEFT -> currentCallbacks.onSwipeLeft(currentTask.id)
+                            SwipeDirection.RIGHT -> currentCallbacks.onSwipeRight(currentTask.id)
+                            null -> {}
+                        }
                     },
                 ),
         ) {
-            TaskRowContent(task, onCheckboxTap)
+            TaskRowContent(
+                task = task,
+                today = today,
+                onOpen = { callbacks.onOpen(task.id) },
+                onCheckboxTap = { callbacks.onCheckboxTap(task.id) },
+            )
         }
     }
 }
 
 /** What shows under the row while it is dragged; gets stronger once releasing would act. */
 @Composable
-private fun SwipeBackground(restore: Boolean, armed: Boolean, modifier: Modifier = Modifier) {
+private fun SwipeBackground(direction: SwipeDirection, restore: Boolean, armed: Boolean, modifier: Modifier = Modifier) {
     val colors = MaterialTheme.colorScheme
-    val background by animateColorAsState(
-        if (armed) colors.outline else colors.surfaceContainerHighest,
-        label = "swipeBackground",
-    )
-    val tint by animateColorAsState(if (armed) colors.surface else colors.onSurfaceVariant, label = "swipeIcon")
+    // Left (cross out) is grey like a crossed task; right (move) uses the theme's accent.
+    val (idle, active, onActive) = when (direction) {
+        SwipeDirection.LEFT -> Triple(colors.surfaceContainerHighest, colors.outline, colors.surface)
+        SwipeDirection.RIGHT -> Triple(colors.secondaryContainer, colors.secondary, colors.onSecondary)
+    }
+    val idleTint = if (direction == SwipeDirection.LEFT) colors.onSurfaceVariant else colors.onSecondaryContainer
+    val background by animateColorAsState(if (armed) active else idle, label = "swipeBackground")
+    val tint by animateColorAsState(if (armed) onActive else idleTint, label = "swipeIcon")
     val scale by animateFloatAsState(if (armed) 1.2f else 1f, label = "swipeIconScale")
+    val icon = when {
+        direction == SwipeDirection.RIGHT -> R.drawable.ic_arrow_forward
+        restore -> R.drawable.ic_undo
+        else -> R.drawable.ic_close
+    }
     Box(
-        contentAlignment = Alignment.CenterEnd,
+        // The icon sits on the side the row uncovers.
+        contentAlignment = if (direction == SwipeDirection.LEFT) Alignment.CenterEnd else Alignment.CenterStart,
         modifier = modifier.background(background).padding(horizontal = 24.dp),
     ) {
-        Icon(
-            painterResource(if (restore) R.drawable.ic_undo else R.drawable.ic_close),
-            contentDescription = null,
-            tint = tint,
-            modifier = Modifier.scale(scale),
-        )
+        Icon(painterResource(icon), contentDescription = null, tint = tint, modifier = Modifier.scale(scale))
     }
 }
 
 @Composable
-private fun TaskRowContent(task: Task, onCheckboxTap: () -> Unit) {
+private fun TaskRowContent(task: Task, today: LocalDate, onOpen: () -> Unit, onCheckboxTap: () -> Unit) {
     val colors = MaterialTheme.colorScheme
     // DONE: green, CANCELLED: grey; both struck through. MOVED: grey, not struck (it lives on elsewhere).
     val targetColor = when (task.status) {
@@ -252,7 +338,11 @@ private fun TaskRowContent(task: Task, onCheckboxTap: () -> Unit) {
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.Start,
         // Opaque, so the swipe background shows only where the row has slid away.
-        modifier = Modifier.fillMaxWidth().background(colors.surface).padding(start = 4.dp, end = 16.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(colors.surface)
+            .clickable(onClick = onOpen)
+            .padding(start = 4.dp, end = 16.dp),
     ) {
         TaskCheckbox(task, onCheckboxTap)
         Column(modifier = Modifier.weight(1f).padding(vertical = 8.dp)) {
@@ -262,7 +352,7 @@ private fun TaskRowContent(task: Task, onCheckboxTap: () -> Unit) {
                 color = textColor,
                 textDecoration = if (struck) TextDecoration.LineThrough else null,
             )
-            taskSubtitle(task)?.let {
+            taskSubtitle(task, today)?.let {
                 Text(
                     text = it,
                     style = MaterialTheme.typography.bodySmall,
@@ -341,12 +431,12 @@ private fun TaskCheckbox(task: Task, onTap: () -> Unit) {
 
 /** Time range and/or where a MOVED task went; null when there is nothing to add. */
 @Composable
-private fun taskSubtitle(task: Task): String? {
+private fun taskSubtitle(task: Task, today: LocalDate): String? {
     val parts = buildList {
         (task.placement as? Placement.Timed)?.let { add("${it.start}–${it.start.plus(it.duration)}") }
         if (task.status == TaskStatus.MOVED) {
             add(
-                task.movedTo?.let { stringResource(R.string.task_moved_to, it.format(shortDayFormat)) }
+                task.movedTo?.let { stringResource(R.string.task_moved_to, relativeDayLabel(it, today)) }
                     ?: stringResource(R.string.task_moved_to_backlog),
             )
         }
@@ -362,7 +452,8 @@ private fun DayContentPreview() {
     MyOrganizerTheme {
         DayContent(
             state = buildDayUiState(today, today, sampleTasks(today)),
-            onPreviousDay = {}, onNextDay = {}, onToday = {}, onCheckboxTap = {}, onSwipeLeft = {},
+            today = today,
+            onPreviousDay = {}, onNextDay = {}, onToday = {}, taskCallbacks = TaskCallbacks.None, onAddTask = {},
         )
     }
 }
@@ -374,7 +465,8 @@ private fun DayContentDarkPreview() {
     MyOrganizerTheme {
         DayContent(
             state = buildDayUiState(today, today, sampleTasks(today)),
-            onPreviousDay = {}, onNextDay = {}, onToday = {}, onCheckboxTap = {}, onSwipeLeft = {},
+            today = today,
+            onPreviousDay = {}, onNextDay = {}, onToday = {}, taskCallbacks = TaskCallbacks.None, onAddTask = {},
         )
     }
 }
@@ -386,7 +478,8 @@ private fun DayContentYesterdayPreview() {
     MyOrganizerTheme {
         DayContent(
             state = buildDayUiState(today.minusDays(1), today, sampleTasks(today)),
-            onPreviousDay = {}, onNextDay = {}, onToday = {}, onCheckboxTap = {}, onSwipeLeft = {},
+            today = today,
+            onPreviousDay = {}, onNextDay = {}, onToday = {}, taskCallbacks = TaskCallbacks.None, onAddTask = {},
         )
     }
 }
@@ -398,7 +491,8 @@ private fun DayContentEmptyPreview() {
     MyOrganizerTheme {
         DayContent(
             state = buildDayUiState(today.plusDays(1), today, emptyList()),
-            onPreviousDay = {}, onNextDay = {}, onToday = {}, onCheckboxTap = {}, onSwipeLeft = {},
+            today = today,
+            onPreviousDay = {}, onNextDay = {}, onToday = {}, taskCallbacks = TaskCallbacks.None, onAddTask = {},
         )
     }
 }

@@ -1,5 +1,8 @@
 package me.k3.organizer.ui.day
 
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider.AndroidViewModelFactory.Companion.APPLICATION_KEY
 import androidx.lifecycle.viewModelScope
@@ -9,18 +12,22 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import me.k3.organizer.OrganizerApp
+import me.k3.organizer.data.TaskActions
 import me.k3.organizer.data.TaskRepository
 import me.k3.organizer.model.Task
 import java.time.LocalDate
+import java.time.LocalDateTime
 
 class DayViewModel(
     private val repository: TaskRepository,
-    private val today: LocalDate,
+    val today: LocalDate,
 ) : ViewModel() {
+    private val actions = TaskActions(repository)
     private val day = MutableStateFlow(today)
 
     val uiState: StateFlow<DayUiState> =
@@ -33,6 +40,80 @@ class DayViewModel(
 
     fun onCheckboxTap(taskId: Long) = updateTask(taskId, ::tapCheckbox)
     fun onSwipeLeft(taskId: Long) = updateTask(taskId, ::swipeLeft)
+
+    fun onSwipeRight(taskId: Long) {
+        viewModelScope.launch {
+            val task = actions.find(taskId)
+            actions.move(taskId, nextDayTarget(task, today))
+        }
+    }
+
+    /**
+     * The open task sheet, or null when it is closed. Compose state rather than a
+     * StateFlow: text fields must see their own edits immediately, or typing can lose characters.
+     */
+    var sheet: TaskSheetState? by mutableStateOf(null)
+        private set
+
+    fun startNewTask() {
+        sheet = TaskSheetState(TaskForm())
+    }
+
+    fun openTask(taskId: Long) {
+        viewModelScope.launch {
+            val all = repository.tasks.first()
+            val task = all.first { it.id == taskId }
+            sheet = TaskSheetState(TaskForm.from(task), task, TaskActions.canUndoMove(all, task))
+        }
+    }
+
+    fun editSheetForm(form: TaskForm) {
+        sheet = sheet?.copy(form = form)
+    }
+
+    fun setSheetTimeEnabled(enabled: Boolean) {
+        val current = sheet?.takeIf { it.canEditTime } ?: return
+        val taskDay = current.task?.day ?: day.value
+        sheet = current.copy(form = current.form.withTimeEnabled(enabled, taskDay, LocalDateTime.now()))
+    }
+
+    fun closeSheet() {
+        sheet = null
+    }
+
+    /** Adds the new task to the day being shown, or saves edits. Ignored while the title is blank. */
+    fun saveSheet() {
+        val current = sheet?.takeIf { it.form.canSave } ?: return
+        val shownDay = day.value
+        sheet = null
+        viewModelScope.launch {
+            val task = current.task
+            if (task == null) repository.add(current.form.toTask(shownDay)) else repository.update(task.id, current.form::applyTo)
+        }
+    }
+
+    /** Saves edits, then moves the task to [target], or to the backlog when [target] is null. */
+    fun moveFromSheet(target: LocalDate?) {
+        val current = sheet?.takeIf { it.canMove && it.form.canSave } ?: return
+        val id = current.task!!.id
+        sheet = null
+        viewModelScope.launch {
+            repository.update(id, current.form::applyTo)
+            if (target == null) actions.toBacklog(id) else actions.move(id, target)
+        }
+    }
+
+    fun undoMoveFromSheet() {
+        val current = sheet?.takeIf { it.canUndoMove } ?: return
+        sheet = null
+        viewModelScope.launch { actions.undoMove(current.task!!.id) }
+    }
+
+    fun deleteFromSheet() {
+        val id = sheet?.task?.id ?: return
+        sheet = null
+        viewModelScope.launch { actions.delete(id) }
+    }
 
     private fun updateTask(taskId: Long, transform: (Task) -> Task) {
         viewModelScope.launch { repository.update(taskId, transform) }

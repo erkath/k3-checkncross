@@ -72,6 +72,31 @@ class DayUiStateTest {
     }
 
     @Test
+    fun swipeRight_onlyForOpenTasks() {
+        val open = untimed(1, mon)
+        assertTrue(canSwipeRight(open))
+        assertFalse(canSwipeRight(open.markDone()))
+        assertFalse(canSwipeRight(open.cancel()))
+        assertFalse(canSwipeRight(open.moveTo(tue).old))
+    }
+
+    @Test
+    fun nextDayTarget_isNextDay_butNotInThePast() {
+        assertEquals(tue, nextDayTarget(untimed(1, mon), today = mon))
+        assertEquals(tue.plusDays(1), nextDayTarget(untimed(1, tue), today = mon))
+        // Overdue: two days ago goes to today, not to yesterday.
+        assertEquals(mon, nextDayTarget(untimed(1, mon.minusDays(2)), today = mon))
+    }
+
+    @Test
+    fun isValidMoveTarget_todayOrLater_notOwnDay() {
+        val task = untimed(1, tue)
+        assertTrue(isValidMoveTarget(mon, task, today = mon))
+        assertFalse(isValidMoveTarget(tue, task, today = mon))
+        assertFalse(isValidMoveTarget(mon.minusDays(1), task, today = mon))
+    }
+
+    @Test
     fun gestureAvailability() {
         val open = untimed(1, mon)
         val moved = open.moveTo(tue).old

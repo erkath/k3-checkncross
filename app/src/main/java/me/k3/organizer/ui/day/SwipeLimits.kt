@@ -1,8 +1,10 @@
 package me.k3.organizer.ui.day
 
+enum class SwipeDirection { LEFT, RIGHT }
+
 /**
- * Geometry of the swipe-left gesture, in pixels. Distances are positive;
- * the row offset is negative because the row moves to the left.
+ * Geometry of the horizontal swipe on a task row, in pixels. Distances are positive;
+ * the row offset is negative when the row moves left and positive when it moves right.
  */
 data class SwipeLimits(
     /** How far the row can be dragged. */
@@ -18,14 +20,30 @@ data class SwipeLimits(
         require(0 < minFling && minFling <= threshold && threshold <= max) { "need 0 < minFling <= threshold <= max" }
     }
 
-    fun clamp(offset: Float): Float = offset.coerceIn(-max, 0f)
+    /** Keeps the offset within reach and out of disabled directions. */
+    fun clamp(offset: Float, allowLeft: Boolean, allowRight: Boolean): Float =
+        offset.coerceIn(if (allowLeft) -max else 0f, if (allowRight) max else 0f)
 
-    fun isArmed(offset: Float): Boolean = offset <= -threshold
+    /** The action that fires if the row is released here, ignoring speed. */
+    fun armedDirection(offset: Float): SwipeDirection? = when {
+        offset <= -threshold -> SwipeDirection.LEFT
+        offset >= threshold -> SwipeDirection.RIGHT
+        else -> null
+    }
 
-    /** On release: fire when armed or flung left; flinging back to the right cancels. */
-    fun shouldFire(offset: Float, velocity: Float): Boolean = when {
-        velocity >= flingVelocity -> false
-        velocity <= -flingVelocity -> offset <= -minFling
-        else -> isArmed(offset)
+    /** On release: armed or flung in the direction of the offset; flinging back cancels. */
+    fun release(offset: Float, velocity: Float): SwipeDirection? {
+        val direction = when {
+            offset < 0f -> SwipeDirection.LEFT
+            offset > 0f -> SwipeDirection.RIGHT
+            else -> return null
+        }
+        val sign = if (direction == SwipeDirection.LEFT) -1f else 1f
+        val along = velocity * sign // > 0: still moving outwards
+        return when {
+            along <= -flingVelocity -> null
+            along >= flingVelocity -> direction.takeIf { offset * sign >= minFling }
+            else -> armedDirection(offset)
+        }
     }
 }

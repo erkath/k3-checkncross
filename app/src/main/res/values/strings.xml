@@ -7,6 +7,31 @@
     <string name="day_section_timed">Scheduled</string>
     <string name="day_section_untimed">Anytime</string>
     <string name="day_empty">Nothing planned for this day</string>
+    <string name="day_add_task">Add task</string>
+
+    <string name="new_task_header">New task</string>
+    <string name="new_task_name">Title</string>
+    <string name="new_task_note">Note (optional)</string>
+    <string name="new_task_time">At a set time</string>
+    <string name="duration_minutes">%1$d min</string>
+    <string name="duration_hours">%1$d h</string>
+    <string name="duration_hours_minutes">%1$d h %2$d min</string>
+
+    <string name="edit_task_header">Task</string>
+    <string name="move_header">Move to</string>
+    <string name="move_pick_date">Pick a date…</string>
+    <string name="move_backlog">Backlog</string>
+    <string name="task_undo_move">Undo move</string>
+    <string name="task_move_next_day">Move to next day</string>
+    <string name="delete_task_title">Delete task?</string>
+    <string name="delete_task_text">“%1$s” will be deleted for good. To keep it in history, cross it out instead.</string>
+    <string name="day_tomorrow">Tomorrow</string>
+
+    <string name="action_add">Add</string>
+    <string name="action_save">Save</string>
+    <string name="action_delete">Delete</string>
+    <string name="action_cancel">Cancel</string>
+    <string name="action_ok">OK</string>
 
     <string name="task_state_open">Not done</string>
     <string name="task_state_done">Done</string>

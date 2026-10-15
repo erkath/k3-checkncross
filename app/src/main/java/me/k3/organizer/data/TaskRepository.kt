@@ -17,6 +17,9 @@ interface TaskRepository {
 
     /** Replaces the task with [id] by [transform] applied to it. Unknown id is an error. */
     suspend fun update(id: Long, transform: (Task) -> Task)
+
+    /** Removes the task with [id]; tasks that were moved from it lose that link. Unknown id is an error. */
+    suspend fun delete(id: Long)
 }
 
 class InMemoryTaskRepository(initial: List<Task> = emptyList()) : TaskRepository {
@@ -36,6 +39,13 @@ class InMemoryTaskRepository(initial: List<Task> = emptyList()) : TaskRepository
         state.update { list ->
             require(list.any { it.id == id }) { "no task with id $id" }
             list.map { if (it.id == id) transform(it).also { new -> check(new.id == id) } else it }
+        }
+    }
+
+    override suspend fun delete(id: Long) {
+        state.update { list ->
+            require(list.any { it.id == id }) { "no task with id $id" }
+            list.filter { it.id != id }.map { if (it.movedFrom == id) it.copy(movedFrom = null) else it }
         }
     }
 }
