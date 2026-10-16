@@ -70,6 +70,10 @@
         <item quantity="other">%1$d open</item>
     </plurals>
 
+    <string name="day_section_routines">Routines</string>
+    <string name="routine_daily">Daily</string>
+    <string name="routine_this_week">This week</string>
+
     <string name="action_add">Add</string>
     <string name="action_save">Save</string>
     <string name="action_delete">Delete</string>

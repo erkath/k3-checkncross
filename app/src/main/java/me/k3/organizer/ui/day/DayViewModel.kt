@@ -22,19 +22,26 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import me.k3.organizer.OrganizerApp
 import me.k3.organizer.data.AppPreferences
+import me.k3.organizer.data.RoutineRepository
 import me.k3.organizer.data.TaskActions
 import me.k3.organizer.data.TaskRepository
 import me.k3.organizer.data.calendar.CalendarSource
 import me.k3.organizer.model.CalendarEvent
 import me.k3.organizer.model.Task
 import me.k3.organizer.ui.common.TodayTracker
+import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.LocalDateTime
+import java.time.temporal.WeekFields
+import java.util.Locale
 
 class DayViewModel(
     private val repository: TaskRepository,
+    private val routineRepository: RoutineRepository,
     private val calendar: CalendarSource,
     private val preferences: AppPreferences,
+    /** For weekly routines: which day a week starts on (from the phone's locale). */
+    private val firstDayOfWeek: DayOfWeek,
     /** Source of the current local time; replaceable in tests. */
     private val now: () -> LocalDateTime = LocalDateTime::now,
 ) : ViewModel() {
@@ -67,10 +74,19 @@ class DayViewModel(
             emptyList()
         }
 
+    /** Routines with their marks; one flow, since combine takes at most five. */
+    private val routineData = combine(routineRepository.routines, routineRepository.marks) { routines, marks -> routines to marks }
+
     val uiState: StateFlow<DayUiState> =
-        combine(day, todayTracker.flow, repository.tasks, events) { day, today, tasks, events ->
-            // Events still loading for a newly shown day: show none rather than the previous day's.
-            buildDayUiState(day, today, tasks, if (events.day == day) events.events else emptyList())
+        combine(day, todayTracker.flow, repository.tasks, events, routineData) { day, today, tasks, events, (routines, marks) ->
+            buildDayUiState(
+                day,
+                today,
+                tasks,
+                // Events still loading for a newly shown day: show none rather than the previous day's.
+                if (events.day == day) events.events else emptyList(),
+                routinesOn(day, today, routines, marks, firstDayOfWeek),
+            )
         }
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), DayUiState(day = today, today = today))
 
@@ -88,6 +104,22 @@ class DayViewModel(
 
     fun onCheckboxTap(taskId: Long) = updateTask(taskId, ::tapCheckbox)
     fun onSwipeLeft(taskId: Long) = updateTask(taskId, ::swipeLeft)
+
+    /** Checkbox on a routine: done for this day (or week) / not done again. */
+    fun onRoutineTap(item: RoutineItem) = applyRoutineChange(routineCheckboxTap(item, day.value))
+
+    /** Swipe left on a routine: skip it this time / un-skip. */
+    fun onRoutineSwipeLeft(item: RoutineItem) = applyRoutineChange(routineSwipeLeft(item, day.value))
+
+    private fun applyRoutineChange(change: RoutineChange?) {
+        change ?: return
+        launchAction {
+            when (change) {
+                is RoutineChange.Set -> routineRepository.setMark(change.mark)
+                is RoutineChange.Clear -> routineRepository.clearMark(change.routineId, change.periodStart)
+            }
+        }
+    }
 
     fun onSwipeRight(taskId: Long) {
         launchAction {
@@ -293,7 +325,13 @@ class DayViewModel(
         val Factory = viewModelFactory {
             initializer {
                 val app = this[APPLICATION_KEY] as OrganizerApp
-                DayViewModel(app.taskRepository, app.calendarSource, app.preferences)
+                DayViewModel(
+                    app.taskRepository,
+                    app.routineRepository,
+                    app.calendarSource,
+                    app.preferences,
+                    WeekFields.of(Locale.getDefault()).firstDayOfWeek,
+                )
             }
         }
     }

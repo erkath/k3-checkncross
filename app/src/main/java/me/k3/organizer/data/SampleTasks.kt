@@ -1,5 +1,8 @@
 package me.k3.organizer.data
 
+import me.k3.organizer.model.Frequency
+import me.k3.organizer.model.Routine
+import me.k3.organizer.model.RoutineMark
 import me.k3.organizer.model.Task
 import me.k3.organizer.model.TaskStatus
 import java.time.Duration
@@ -21,3 +24,14 @@ fun sampleTasks(today: LocalDate): List<Task> {
         Task(id = 8, title = "Read Kotlin docs"),
     )
 }
+
+/** Demo routines for previews: one done today, one open, one weekly. */
+fun sampleRoutines(today: LocalDate): List<Routine> = listOf(
+    Routine(id = 1, title = "Play scales", note = "C major, both hands", frequency = Frequency.DAILY, createdOn = today.minusDays(30)),
+    Routine(id = 2, title = "Stretching", frequency = Frequency.DAILY, createdOn = today.minusDays(30)),
+    Routine(id = 3, title = "Vacuum", frequency = Frequency.WEEKLY, createdOn = today.minusDays(30)),
+)
+
+fun sampleRoutineMarks(today: LocalDate): List<RoutineMark> = listOf(
+    RoutineMark(routineId = 2, periodStart = today, status = TaskStatus.DONE, markedOn = today),
+)

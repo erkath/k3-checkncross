@@ -23,9 +23,12 @@ data class DayUiState(
     val allDayEvents: List<CalendarEvent> = emptyList(),
     /** The "Scheduled" section: timed tasks and timed calendar events together. */
     val scheduled: List<ScheduledItem> = emptyList(),
+    /** Routines due on [day]; see [routinesOn]. */
+    val routines: List<RoutineItem> = emptyList(),
 ) {
     val isToday: Boolean get() = day == today
-    val isEmpty: Boolean get() = timed.isEmpty() && untimed.isEmpty() && allDayEvents.isEmpty() && scheduled.isEmpty()
+    val isEmpty: Boolean
+        get() = timed.isEmpty() && untimed.isEmpty() && allDayEvents.isEmpty() && scheduled.isEmpty() && routines.isEmpty()
 }
 
 /** A row of the "Scheduled" section: a task with a time, or a calendar event. */
@@ -51,8 +54,15 @@ private fun statusRank(status: TaskStatus): Int = when (status) {
 /**
  * Picks the tasks of [day] out of [tasks], ordered by status group within each section, plus the
  * backlog and overdue lists. [events] are the calendar events of [day]; timed ones join "Scheduled".
+ * [routines] are already picked for [day] by [routinesOn].
  */
-fun buildDayUiState(day: LocalDate, today: LocalDate, tasks: List<Task>, events: List<CalendarEvent> = emptyList()): DayUiState {
+fun buildDayUiState(
+    day: LocalDate,
+    today: LocalDate,
+    tasks: List<Task>,
+    events: List<CalendarEvent> = emptyList(),
+    routines: List<RoutineItem> = emptyList(),
+): DayUiState {
     val onDay = tasks.filter { it.day == day }
     val closedLast = compareBy<Task> { statusRank(it.status) }
     val timed = onDay
@@ -71,6 +81,7 @@ fun buildDayUiState(day: LocalDate, today: LocalDate, tasks: List<Task>, events:
         overdue = overdueTasks(tasks, today),
         allDayEvents = events.filter { it.allDay },
         scheduled = scheduledItems(day, timed, events.filter { !it.allDay }),
+        routines = routines,
     )
 }
 
