@@ -20,21 +20,24 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import me.k3.organizer.R
 import me.k3.organizer.ui.day.DayScreen
 import me.k3.organizer.ui.day.DayViewModel
+import me.k3.organizer.ui.routines.RoutinesScreen
+import me.k3.organizer.ui.routines.RoutinesViewModel
 import me.k3.organizer.ui.week.WeekScreen
 import me.k3.organizer.ui.week.WeekViewModel
 
-enum class Tab { DAY, WEEK }
+enum class Tab { DAY, WEEK, ROUTINES }
 
 /**
- * The app's frame: a bottom navigation bar switching between screens. Two tabs do not need a
+ * The app's frame: a bottom navigation bar switching between screens. A few tabs do not need a
  * navigation library; the open tab is plain state (saved, so it survives rotation).
- * Both ViewModels belong to the Activity, so each screen keeps its day/week while the other is shown.
+ * The ViewModels belong to the Activity, so each screen keeps its state while another is shown.
  */
 @Composable
 fun AppRoot() {
     var tab by rememberSaveable { mutableStateOf(Tab.DAY) }
     val dayViewModel: DayViewModel = viewModel(factory = DayViewModel.Factory)
     val weekViewModel: WeekViewModel = viewModel(factory = WeekViewModel.Factory)
+    val routinesViewModel: RoutinesViewModel = viewModel(factory = RoutinesViewModel.Factory)
 
     fun openWeek() {
         // The week of the day being looked at, not necessarily this week.
@@ -57,6 +60,12 @@ fun AppRoot() {
                     icon = { Icon(painterResource(R.drawable.ic_view_week), contentDescription = null) },
                     label = { Text(stringResource(R.string.nav_week)) },
                 )
+                NavigationBarItem(
+                    selected = tab == Tab.ROUTINES,
+                    onClick = { tab = Tab.ROUTINES },
+                    icon = { Icon(painterResource(R.drawable.ic_repeat), contentDescription = null) },
+                    label = { Text(stringResource(R.string.nav_routines)) },
+                )
             }
         },
     ) { padding ->
@@ -75,6 +84,10 @@ fun AppRoot() {
                     },
                     modifier = content,
                 )
+            }
+            Tab.ROUTINES -> {
+                BackHandler { tab = Tab.DAY }
+                RoutinesScreen(viewModel = routinesViewModel, modifier = content)
             }
         }
     }
