@@ -24,6 +24,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -576,6 +577,7 @@ private fun TaskRowContent(task: Task, today: LocalDate, onOpen: () -> Unit, onC
     val colors = MaterialTheme.colorScheme
     val textColor by animateColorAsState(taskTitleColor(task.status), label = "taskTextColor")
     val struck = isStruckThrough(task.status)
+    val timed = task.placement as? Placement.Timed
 
     Row(
         verticalAlignment = Alignment.CenterVertically,
@@ -585,8 +587,16 @@ private fun TaskRowContent(task: Task, today: LocalDate, onOpen: () -> Unit, onC
             .fillMaxWidth()
             .background(colors.surface)
             .clickable(onClick = onOpen)
-            .padding(start = 4.dp, end = 16.dp),
+            .padding(start = if (timed != null) 16.dp else 4.dp, end = 16.dp),
     ) {
+        // Timed tasks read as a timeline: time, checkbox, title.
+        timed?.let {
+            TimeColumn(
+                start = it.start.toString(),
+                end = it.start.plus(it.duration).toString(),
+                dimmed = task.status != TaskStatus.OPEN,
+            )
+        }
         StatusCheckbox(task.status, enabled = canTapCheckbox(task), onTap = onCheckboxTap)
         Column(modifier = Modifier.weight(1f).padding(vertical = 8.dp)) {
             Text(
@@ -603,6 +613,16 @@ private fun TaskRowContent(task: Task, today: LocalDate, onOpen: () -> Unit, onC
                 )
             }
         }
+    }
+}
+
+/** The time column of the "Scheduled" timeline: start above, end below and smaller. */
+@Composable
+internal fun TimeColumn(start: String, end: String, dimmed: Boolean = false) {
+    val colors = MaterialTheme.colorScheme
+    Column(modifier = Modifier.width(44.dp)) {
+        Text(start, style = MaterialTheme.typography.bodyMedium, color = if (dimmed) colors.outline else colors.onSurface)
+        Text(end, style = MaterialTheme.typography.bodySmall, color = if (dimmed) colors.outline else colors.onSurfaceVariant)
     }
 }
 
@@ -673,11 +693,10 @@ private fun StatusCheckbox(status: TaskStatus, enabled: Boolean, onTap: () -> Un
     }
 }
 
-/** Time range and/or where a MOVED task went; null when there is nothing to add. */
+/** Where a MOVED task went and/or the note; null when there is nothing to add. The time has its own column. */
 @Composable
 private fun taskSubtitle(task: Task, today: LocalDate): String? {
     val parts = buildList {
-        (task.placement as? Placement.Timed)?.let { add("${it.start}–${it.start.plus(it.duration)}") }
         if (task.status == TaskStatus.MOVED) {
             add(
                 task.movedTo?.let { stringResource(R.string.task_moved_to, relativeDayLabel(it, today)) }

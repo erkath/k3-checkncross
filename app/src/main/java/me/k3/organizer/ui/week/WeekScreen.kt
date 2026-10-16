@@ -165,15 +165,13 @@ private fun WeekDayCard(day: DayUiState, onOpen: () -> Unit) {
     }
 }
 
-/** A task in one line: a small status mark, the start time if any, the title styled as on the Day screen. */
+/** A task in one line: start time (if any), a small status mark, the title styled as on the Day screen. */
 @Composable
 private fun TaskLine(task: Task) {
     Row(verticalAlignment = Alignment.CenterVertically) {
+        LineTime((task.placement as? Placement.Timed)?.start?.toString())
         StatusMark(task.status)
         Spacer(Modifier.width(8.dp))
-        (task.placement as? Placement.Timed)?.let {
-            Text("${it.start} ", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
         Text(
             task.title,
             style = MaterialTheme.typography.bodyMedium,
@@ -185,10 +183,11 @@ private fun TaskLine(task: Task) {
     }
 }
 
-/** A calendar event in one line: a bar in its color, the start time unless all-day, the title. */
+/** A calendar event in one line: start time unless all-day, a bar in its color, the title. */
 @Composable
 private fun EventLine(event: CalendarEvent, day: LocalDate) {
     Row(verticalAlignment = Alignment.CenterVertically) {
+        LineTime(event.startLabelOn(day).takeUnless { event.allDay })
         Box(Modifier.size(width = 14.dp, height = 14.dp), contentAlignment = Alignment.Center) {
             Box(
                 Modifier
@@ -198,16 +197,20 @@ private fun EventLine(event: CalendarEvent, day: LocalDate) {
             )
         }
         Spacer(Modifier.width(8.dp))
-        if (!event.allDay) {
-            val start = if (event.start.toLocalDate() < day) "…" else event.start.toLocalTime().toString()
-            Text("$start ", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
         Text(
             event.title.ifEmpty { stringResource(R.string.event_no_title) },
             style = MaterialTheme.typography.bodyMedium,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
+    }
+}
+
+/** Fixed-width time slot at the start of a line; empty for untimed lines, so the marks line up. */
+@Composable
+private fun LineTime(time: String?) {
+    Box(Modifier.width(44.dp)) {
+        time?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
     }
 }
 

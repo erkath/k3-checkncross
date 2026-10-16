@@ -84,4 +84,16 @@ class CalendarEventTest {
         assertNotNull(instance.toEventOn(thu.plusDays(2), berlin))
         assertNull(instance.toEventOn(thu.plusDays(3), berlin))
     }
+
+    @Test
+    fun startAndEndLabels_separately() {
+        val overnight = timed(thu.atTime(22, 0), thu.plusDays(1).atTime(2, 0))
+        val first = overnight.toEventOn(thu, berlin)!!
+        assertEquals("22:00", first.startLabelOn(thu))
+        assertEquals("…", first.endLabelOn(thu))
+        val next = thu.plusDays(1)
+        val second = overnight.toEventOn(next, berlin)!!
+        assertEquals("…", second.startLabelOn(next))
+        assertEquals("02:00", second.endLabelOn(next))
+    }
 }

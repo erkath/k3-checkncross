@@ -108,6 +108,13 @@ class DayUiStateTest {
         assertEquals(listOf(1L), buildDayUiState(mon.minusDays(1), mon, tasks).overdue.map { it.id })
     }
 
+    @Test
+    fun scheduled_sameTime_openTaskThenClosedTaskThenEvent() {
+        val tasks = listOf(timed(1, mon, 9).markDone(), timed(2, mon, 9))
+        val events = listOf(event(10, mon.atTime(9, 0), mon.atTime(10, 0)))
+        assertEquals(listOf("t2", "t1", "e10"), ids(buildDayUiState(mon, mon, tasks, events).scheduled))
+    }
+
     // --- calendar events ---
 
     private fun event(id: Long, start: LocalDateTime, end: LocalDateTime, allDay: Boolean = false) =
@@ -121,14 +128,15 @@ class DayUiStateTest {
     }
 
     @Test
-    fun scheduled_interleavesEventsWithOpenTasks_closedTasksLast() {
+    fun scheduled_isATimeline_closedTasksStayInPlace() {
         val tasks = listOf(timed(1, mon, 9), timed(2, mon, 14), timed(3, mon, 8).markDone())
         val events = listOf(event(10, mon.atTime(11, 0), mon.atTime(12, 0)), event(11, mon.atTime(7, 0), mon.atTime(7, 30)))
 
         val state = buildDayUiState(mon, mon, tasks, events)
 
-        assertEquals(listOf("e11", "t1", "e10", "t2", "t3"), ids(state.scheduled))
-        // The task-only list keeps its meaning.
+        // The done 8:00 task keeps its place in time instead of sinking to the bottom.
+        assertEquals(listOf("e11", "t3", "t1", "e10", "t2"), ids(state.scheduled))
+        // The task-only list keeps its own order: closed tasks last.
         assertEquals(listOf(1L, 2L, 3L), state.timed.map { it.id })
     }
 

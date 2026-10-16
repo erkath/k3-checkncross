@@ -28,12 +28,16 @@ data class CalendarEvent(
     fun sortTimeOn(day: LocalDate): LocalTime =
         if (start.toLocalDate() < day) LocalTime.MIDNIGHT else start.toLocalTime()
 
+    /** "09:00", or "…" if it began on an earlier day. */
+    fun startLabelOn(day: LocalDate): String =
+        if (start.toLocalDate() < day) "…" else start.toLocalTime().toString()
+
+    /** "10:00", or "…" if it goes on past [day] (ending exactly at the next midnight shows "00:00"). */
+    fun endLabelOn(day: LocalDate): String =
+        if (end.toLocalDate() > day && end != day.plusDays(1).atStartOfDay()) "…" else end.toLocalTime().toString()
+
     /** "09:00–10:00"; "…–10:00" if it began on an earlier day; "22:00–…" if it goes on past [day]. */
-    fun timeLabelOn(day: LocalDate): String {
-        val from = if (start.toLocalDate() < day) "…" else start.toLocalTime().toString()
-        val to = if (end.toLocalDate() > day && end != day.plusDays(1).atStartOfDay()) "…" else end.toLocalTime().toString()
-        return "$from–$to"
-    }
+    fun timeLabelOn(day: LocalDate): String = "${startLabelOn(day)}–${endLabelOn(day)}"
 }
 
 /** A row of `CalendarContract.Instances`, as read; [toEventOn] turns it into an event of one day. */

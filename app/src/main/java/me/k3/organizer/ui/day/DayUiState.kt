@@ -86,14 +86,12 @@ fun buildDayUiState(
 }
 
 /**
- * Open timed tasks and timed events interleaved by start time (a task first on a tie), then
- * the closed tasks in their usual order: events have no status, so they stay with the open work.
+ * The "Scheduled" timeline: timed tasks, whatever their status, and timed events, all by start
+ * time. On a tie a task comes before an event, and tasks keep their order (open before closed).
  */
-private fun scheduledItems(day: LocalDate, timed: List<Task>, events: List<CalendarEvent>): List<ScheduledItem> {
-    val (open, closed) = timed.partition { it.status == TaskStatus.OPEN }
-    val live = open.map { ScheduledItem.TaskItem(it) } + events.map { ScheduledItem.EventItem(it) }
-    return live.sortedBy { it.sortTimeOn(day) } + closed.map { ScheduledItem.TaskItem(it) }
-}
+private fun scheduledItems(day: LocalDate, timed: List<Task>, events: List<CalendarEvent>): List<ScheduledItem> =
+    // sortedBy is stable, so ties keep the order of this list.
+    (timed.map { ScheduledItem.TaskItem(it) } + events.map { ScheduledItem.EventItem(it) }).sortedBy { it.sortTimeOn(day) }
 
 /** Tap on the checkbox: OPEN ↔ DONE; a cancelled task is restored to OPEN. */
 fun tapCheckbox(task: Task): Task =

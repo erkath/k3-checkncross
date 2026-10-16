@@ -48,20 +48,21 @@ class CalendarPromptActions(val onAllow: () -> Unit, val onDismiss: () -> Unit)
 
 /**
  * A calendar event in the day list. No checkbox and no swipes: events belong to the calendar app,
- * which a tap opens. The colored bar sits where a task's checkbox is, so titles line up.
+ * which a tap opens. The colored bar sits where a task's checkbox is, so titles line up. With
+ * [showTime] (timed events in "Scheduled") the time column comes first, as for timed tasks.
  */
 @Composable
-fun EventRow(event: CalendarEvent, day: LocalDate, onOpen: () -> Unit, modifier: Modifier = Modifier) {
+fun EventRow(event: CalendarEvent, day: LocalDate, onOpen: () -> Unit, modifier: Modifier = Modifier, showTime: Boolean = !event.allDay) {
     val colors = MaterialTheme.colorScheme
-    val details = listOfNotNull(event.timeLabelOn(day).takeUnless { event.allDay }, event.location)
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = modifier
             .fillMaxWidth()
             .height(IntrinsicSize.Min)
             .clickable(onClick = onOpen)
-            .padding(start = 4.dp, end = 16.dp),
+            .padding(start = if (showTime) 16.dp else 4.dp, end = 16.dp),
     ) {
+        if (showTime) TimeColumn(start = event.startLabelOn(day), end = event.endLabelOn(day))
         Box(contentAlignment = Alignment.Center, modifier = Modifier.width(48.dp).fillMaxHeight().padding(vertical = 8.dp)) {
             Box(
                 Modifier
@@ -77,8 +78,8 @@ fun EventRow(event: CalendarEvent, day: LocalDate, onOpen: () -> Unit, modifier:
                 style = MaterialTheme.typography.bodyLarge,
                 color = colors.onSurface,
             )
-            if (details.isNotEmpty()) {
-                Text(details.joinToString(" · "), style = MaterialTheme.typography.bodySmall, color = colors.onSurfaceVariant)
+            event.location?.let {
+                Text(it, style = MaterialTheme.typography.bodySmall, color = colors.onSurfaceVariant)
             }
         }
     }
