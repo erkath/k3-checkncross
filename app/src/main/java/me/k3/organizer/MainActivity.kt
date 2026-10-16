@@ -4,7 +4,7 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import me.k3.organizer.ui.day.DayScreen
+import me.k3.organizer.ui.AppRoot
 import me.k3.organizer.ui.theme.MyOrganizerTheme
 
 class MainActivity : ComponentActivity() {
@@ -13,7 +13,7 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         setContent {
             MyOrganizerTheme {
-                DayScreen()
+                AppRoot()
             }
         }
     }

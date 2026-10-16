@@ -154,13 +154,6 @@ class DayUiStateTest {
     // --- the date changing ---
 
     @Test
-    fun untilNextMidnight_fromVariousTimes() {
-        assertEquals(Duration.ofHours(24), untilNextMidnight(mon.atStartOfDay()))
-        assertEquals(Duration.ofMinutes(90), untilNextMidnight(mon.atTime(22, 30)))
-        assertEquals(Duration.ofSeconds(1), untilNextMidnight(mon.atTime(23, 59, 59)))
-    }
-
-    @Test
     fun shownDay_followsToday_onlyIfItWasToday() {
         assertEquals(tue, shownDayAfterTodayChange(shown = mon, oldToday = mon, newToday = tue))
         val friday = mon.plusDays(4)

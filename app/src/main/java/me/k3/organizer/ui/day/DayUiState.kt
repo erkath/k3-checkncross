@@ -4,9 +4,7 @@ import me.k3.organizer.model.CalendarEvent
 import me.k3.organizer.model.Placement
 import me.k3.organizer.model.Task
 import me.k3.organizer.model.TaskStatus
-import java.time.Duration
 import java.time.LocalDate
-import java.time.LocalDateTime
 import java.time.LocalTime
 
 data class DayUiState(
@@ -118,10 +116,6 @@ fun backlogTarget(shownDay: LocalDate, today: LocalDate): LocalDate = maxOf(show
 fun overdueTasks(tasks: List<Task>, today: LocalDate): List<Task> =
     tasks.filter { it.isOverdue(today) }
         .sortedWith(compareBy<Task>({ it.day }, { it.startTime }, { it.id }))
-
-/** Time left until the next local midnight after [now]. */
-fun untilNextMidnight(now: LocalDateTime): Duration =
-    Duration.between(now, now.toLocalDate().plusDays(1).atStartOfDay())
 
 /** The day to show once "today" changes: a screen that was on today follows it; one browsing another day stays. */
 fun shownDayAfterTodayChange(shown: LocalDate, oldToday: LocalDate, newToday: LocalDate): LocalDate =

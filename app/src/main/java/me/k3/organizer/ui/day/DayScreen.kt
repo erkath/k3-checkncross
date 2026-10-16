@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -72,6 +73,8 @@ import me.k3.organizer.model.CalendarEvent
 import me.k3.organizer.model.Placement
 import me.k3.organizer.model.Task
 import me.k3.organizer.model.TaskStatus
+import me.k3.organizer.ui.common.isStruckThrough
+import me.k3.organizer.ui.common.taskTitleColor
 import me.k3.organizer.ui.theme.LocalStatusColors
 import me.k3.organizer.ui.theme.MyOrganizerTheme
 import java.time.LocalDate
@@ -217,6 +220,8 @@ fun DayContent(
 ) {
     Scaffold(
         modifier = modifier.fillMaxSize(),
+        // System bars are handled by AppRoot's Scaffold around this screen.
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
         floatingActionButton = {
             FloatingActionButton(onClick = onAddTask) {
                 Icon(painterResource(R.drawable.ic_add), contentDescription = stringResource(R.string.day_add_task))
@@ -480,14 +485,8 @@ private fun SwipeBackground(direction: SwipeDirection, restore: Boolean, armed: 
 @Composable
 private fun TaskRowContent(task: Task, today: LocalDate, onOpen: () -> Unit, onCheckboxTap: () -> Unit) {
     val colors = MaterialTheme.colorScheme
-    // DONE: green, CANCELLED: grey; both struck through. MOVED: grey, not struck (it lives on elsewhere).
-    val targetColor = when (task.status) {
-        TaskStatus.OPEN -> colors.onSurface
-        TaskStatus.DONE -> LocalStatusColors.current.done
-        TaskStatus.CANCELLED, TaskStatus.MOVED -> colors.outline
-    }
-    val textColor by animateColorAsState(targetColor, label = "taskTextColor")
-    val struck = task.status == TaskStatus.DONE || task.status == TaskStatus.CANCELLED
+    val textColor by animateColorAsState(taskTitleColor(task.status), label = "taskTextColor")
+    val struck = isStruckThrough(task.status)
 
     Row(
         verticalAlignment = Alignment.CenterVertically,

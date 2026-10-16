@@ -11,7 +11,6 @@ import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -28,6 +27,7 @@ import me.k3.organizer.data.TaskRepository
 import me.k3.organizer.data.calendar.CalendarSource
 import me.k3.organizer.model.CalendarEvent
 import me.k3.organizer.model.Task
+import me.k3.organizer.ui.common.TodayTracker
 import java.time.LocalDate
 import java.time.LocalDateTime
 
@@ -39,9 +39,9 @@ class DayViewModel(
     private val now: () -> LocalDateTime = LocalDateTime::now,
 ) : ViewModel() {
     private val actions = TaskActions(repository)
-    /** The current date. Not fixed at start: it follows midnight and is re-read whenever the app comes back. */
-    private val todayState = MutableStateFlow(now().toLocalDate())
-    private val today: LocalDate get() = todayState.value
+    /** The current date: follows midnight and is re-read whenever the app comes back. */
+    private val todayTracker = TodayTracker(now, viewModelScope, ::onNewDay)
+    private val today: LocalDate get() = todayTracker.value
     private val day = MutableStateFlow(today)
 
     /** Bumped to re-read the calendar: the app is not told when events change elsewhere. */
@@ -68,7 +68,7 @@ class DayViewModel(
         }
 
     val uiState: StateFlow<DayUiState> =
-        combine(day, todayState, repository.tasks, events) { day, today, tasks, events ->
+        combine(day, todayTracker.flow, repository.tasks, events) { day, today, tasks, events ->
             // Events still loading for a newly shown day: show none rather than the previous day's.
             buildDayUiState(day, today, tasks, if (events.day == day) events.events else emptyList())
         }
@@ -77,6 +77,14 @@ class DayViewModel(
     fun previousDay() = day.update { it.minusDays(1) }
     fun nextDay() = day.update { it.plusDays(1) }
     fun goToToday() = day.update { today }
+
+    /** The day currently shown, e.g. to open the Week screen on its week. */
+    val shownDay: LocalDate get() = day.value
+
+    /** Shows [date], e.g. after picking it on the Week screen. */
+    fun showDay(date: LocalDate) {
+        day.value = date
+    }
 
     fun onCheckboxTap(taskId: Long) = updateTask(taskId, ::tapCheckbox)
     fun onSwipeLeft(taskId: Long) = updateTask(taskId, ::swipeLeft)
@@ -104,25 +112,13 @@ class DayViewModel(
 
     init {
         openReviewIfOverdue()
-        // While the app stays open, notice midnight. The loop re-checks after each wait, so a
-        // late or early wake-up (device sleep, a DST shift) only delays the switch, never skips it.
-        viewModelScope.launch {
-            while (true) {
-                delay(untilNextMidnight(now()).toMillis() + 1_000)
-                refreshToday()
-            }
-        }
     }
 
-    /**
-     * Re-reads the date; called at midnight and whenever the screen is resumed. On a new day the
-     * screen follows if it was showing today, and the overdue review opens if needed.
-     */
-    fun refreshToday() {
-        val old = today
-        val new = now().toLocalDate()
-        if (new == old) return
-        todayState.value = new
+    /** Re-reads the date; call when the screen is resumed (midnight itself is noticed by [todayTracker]). */
+    fun refreshToday() = todayTracker.refresh()
+
+    /** On a new day the screen follows if it was showing today, and the overdue review opens if needed. */
+    private fun onNewDay(old: LocalDate, new: LocalDate) {
         day.update { shownDayAfterTodayChange(it, old, new) }
         openReviewIfOverdue()
     }
