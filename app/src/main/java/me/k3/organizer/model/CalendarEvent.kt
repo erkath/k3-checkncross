@@ -8,7 +8,8 @@ import java.time.ZoneId
 import java.time.ZoneOffset
 
 /**
- * One occurrence of an event from the phone's calendar. Read-only and never stored in our database.
+ * One occurrence of an event from the phone's calendar. Read-only and never stored in our database;
+ * only the app's own mark on it is (see [EventMark]), which becomes [status].
  * For an all-day event [start] and [end] are midnights; [end] is exclusive.
  */
 data class CalendarEvent(
@@ -23,6 +24,8 @@ data class CalendarEvent(
     /** The occurrence as the calendar stores it, in epoch millis; needed to open it in the calendar app. */
     val beginMillis: Long,
     val endMillis: Long,
+    /** OPEN, or DONE / CANCELLED from the app's [EventMark]. Never written back to the calendar. */
+    val status: TaskStatus = TaskStatus.OPEN,
 ) {
     /** Where the event sorts on [day]: its start, or midnight if it began on an earlier day. */
     fun sortTimeOn(day: LocalDate): LocalTime =
@@ -46,6 +49,8 @@ data class CalendarInstance(
     val title: String?,
     val beginMillis: Long,
     val endMillis: Long,
+    /** OPEN, or DONE / CANCELLED from the app's [EventMark]. Never written back to the calendar. */
+    val status: TaskStatus = TaskStatus.OPEN,
     val allDay: Boolean,
     val color: Int?,
     val location: String?,

@@ -6,8 +6,10 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
+import me.k3.organizer.data.RoomEventMarkRepository
 import me.k3.organizer.data.RoomRoutineRepository
 import me.k3.organizer.data.RoomTaskRepository
+import me.k3.organizer.model.EventMark
 import me.k3.organizer.model.Frequency
 import me.k3.organizer.model.Routine
 import me.k3.organizer.model.TaskStatus
@@ -41,7 +43,7 @@ class MigrationTest {
     }
 
     @Test
-    fun from1_keepsTasks_andAddsRoutines() = runBlocking {
+    fun from1_keepsTasks_andAddsLaterTables() = runBlocking {
         createVersion1(withTask = "Buy milk")
 
         val db = Room.databaseBuilder(context, OrganizerDatabase::class.java, name).build()
@@ -54,6 +56,12 @@ class MigrationTest {
             val routines = RoomRoutineRepository(db)
             val r = routines.add(Routine(title = "Play scales", frequency = Frequency.DAILY, createdOn = task.day!!))
             assertEquals(listOf(r), routines.routines.first())
+
+            // Version 3: event marks.
+            val eventMarks = RoomEventMarkRepository(db)
+            val mark = EventMark(eventId = 7, beginMillis = 1_000, status = TaskStatus.DONE)
+            eventMarks.set(mark)
+            assertEquals(listOf(mark), eventMarks.marks.first())
         } finally {
             db.close()
         }

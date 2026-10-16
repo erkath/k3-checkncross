@@ -1,10 +1,12 @@
 package me.k3.organizer.ui.day
 
 import me.k3.organizer.model.CalendarEvent
+import me.k3.organizer.model.EventMark
 import me.k3.organizer.model.Task
 import me.k3.organizer.model.TaskStatus
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.time.Duration
@@ -184,6 +186,47 @@ class DayUiStateTest {
         assertEquals(listOf(holiday), state.allDayEvents)
         assertTrue(state.scheduled.isEmpty())
         assertFalse(state.isEmpty)
+    }
+
+    // --- marks on calendar events ---
+
+    private fun markedEvent(id: Long, h: Int) = event(id, mon.atTime(h, 0), mon.atTime(h + 1, 0)).copy(beginMillis = id * 1000)
+
+    @Test
+    fun eventMarks_giveEventsTheirStatus() {
+        val events = listOf(markedEvent(10, 9), markedEvent(11, 11))
+        val marks = listOf(EventMark(10, 10_000, TaskStatus.DONE))
+        val state = buildDayUiState(mon, mon, emptyList(), events, eventMarks = marks)
+        assertEquals(
+            listOf(TaskStatus.DONE, TaskStatus.OPEN),
+            state.scheduled.map { (it as ScheduledItem.EventItem).event.status },
+        )
+    }
+
+    @Test
+    fun closedLast_sinksCheckedEventsToo() {
+        val tasks = listOf(timed(1, mon, 10), timed(2, mon, 8).cancel())
+        val events = listOf(markedEvent(10, 9), markedEvent(11, 12))
+        val marks = listOf(EventMark(10, 10_000, TaskStatus.DONE))
+        val state = buildDayUiState(mon, mon, tasks, events, eventMarks = marks, scheduledClosedLast = true)
+        // Open by time; then done (the checked 9:00 event); then grey (the crossed 8:00 task).
+        assertEquals(listOf("t1", "e11", "e10", "t2"), ids(state.scheduled))
+        // As a timeline, everything stays by time.
+        val timeline = buildDayUiState(mon, mon, tasks, events, eventMarks = marks)
+        assertEquals(listOf("t2", "e10", "t1", "e11"), ids(timeline.scheduled))
+    }
+
+    @Test
+    fun eventGestures() {
+        val open = markedEvent(10, 9)
+        assertEquals(TaskStatus.DONE, eventCheckboxTap(open))
+        assertNull(eventCheckboxTap(open.copy(status = TaskStatus.DONE)))
+        assertNull(eventCheckboxTap(open.copy(status = TaskStatus.CANCELLED)))
+
+        assertEquals(TaskStatus.CANCELLED, eventSwipeLeft(open))
+        assertNull(eventSwipeLeft(open.copy(status = TaskStatus.CANCELLED)))
+        assertTrue(canSwipeLeft(open))
+        assertFalse(canSwipeLeft(open.copy(status = TaskStatus.DONE)))
     }
 
     // --- the date changing ---

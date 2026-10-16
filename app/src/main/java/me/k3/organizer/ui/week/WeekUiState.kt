@@ -1,6 +1,7 @@
 package me.k3.organizer.ui.week
 
 import me.k3.organizer.model.CalendarEvent
+import me.k3.organizer.model.EventMark
 import me.k3.organizer.model.Task
 import me.k3.organizer.model.TaskStatus
 import me.k3.organizer.ui.day.DayUiState
@@ -30,13 +31,14 @@ fun buildWeekUiState(
     today: LocalDate,
     tasks: List<Task>,
     eventsByDay: Map<LocalDate, List<CalendarEvent>>,
+    eventMarks: List<EventMark> = emptyList(),
     scheduledClosedLast: Boolean = false,
 ): WeekUiState = WeekUiState(
     weekStart = weekStart,
     today = today,
     days = (0L..6L).map { offset ->
         val day = weekStart.plusDays(offset)
-        buildDayUiState(day, today, tasks, eventsByDay[day].orEmpty(), scheduledClosedLast = scheduledClosedLast)
+        buildDayUiState(day, today, tasks, eventsByDay[day].orEmpty(), eventMarks = eventMarks, scheduledClosedLast = scheduledClosedLast)
     },
 )
 

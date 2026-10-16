@@ -151,7 +151,11 @@ fun DayScreen(modifier: Modifier = Modifier, viewModel: DayViewModel = viewModel
         } else {
             null
         },
-        onOpenEvent = { openInCalendar(context, it) },
+        eventCallbacks = EventCallbacks(
+            onOpen = { openInCalendar(context, it) },
+            onCheckboxTap = viewModel::onEventCheckboxTap,
+            onSwipeLeft = viewModel::onEventSwipeLeft,
+        ),
         // The banner already offers it; the quiet row is for after "Not now".
         onConnectCalendar = connectCalendar.takeIf { !viewModel.calendarAccess && !viewModel.calendarPromptVisible },
         modifier = modifier,
@@ -201,6 +205,17 @@ fun DayScreen(modifier: Modifier = Modifier, viewModel: DayViewModel = viewModel
     }
 }
 
+/** What can be done to a calendar event in the day list. */
+class EventCallbacks(
+    val onOpen: (CalendarEvent) -> Unit,
+    val onCheckboxTap: (CalendarEvent) -> Unit,
+    val onSwipeLeft: (CalendarEvent) -> Unit,
+) {
+    companion object {
+        val None = EventCallbacks({}, {}, {})
+    }
+}
+
 /** What can be done to a routine in the day list. */
 class RoutineCallbacks(val onTap: (RoutineItem) -> Unit, val onSwipeLeft: (RoutineItem) -> Unit) {
     companion object {
@@ -234,7 +249,7 @@ fun DayContent(
     onOpenReview: () -> Unit,
     onToggleScheduledSort: () -> Unit,
     calendarPrompt: CalendarPromptActions?,
-    onOpenEvent: (CalendarEvent) -> Unit,
+    eventCallbacks: EventCallbacks,
     /** Shows a "Connect calendar" row at the end of the list; null hides it. */
     onConnectCalendar: (() -> Unit)?,
     modifier: Modifier = Modifier,
@@ -251,7 +266,7 @@ fun DayContent(
     ) { innerPadding ->
         DayList(
             state, state.today, onPreviousDay, onNextDay, onToday, onOpenBacklog, onOpenReview, onToggleScheduledSort,
-            calendarPrompt, onOpenEvent, onConnectCalendar, taskCallbacks, routineCallbacks, Modifier.padding(innerPadding),
+            calendarPrompt, eventCallbacks, onConnectCalendar, taskCallbacks, routineCallbacks, Modifier.padding(innerPadding),
         )
     }
 }
@@ -267,7 +282,7 @@ private fun DayList(
     onOpenReview: () -> Unit,
     onToggleScheduledSort: () -> Unit,
     calendarPrompt: CalendarPromptActions?,
-    onOpenEvent: (CalendarEvent) -> Unit,
+    eventCallbacks: EventCallbacks,
     /** Shows a "Connect calendar" row at the end of the list; null hides it. */
     onConnectCalendar: (() -> Unit)?,
     taskCallbacks: TaskCallbacks,
@@ -300,7 +315,7 @@ private fun DayList(
         if (state.allDayEvents.isNotEmpty()) {
             item(key = R.string.day_section_all_day) { SectionTitle(stringResource(R.string.day_section_all_day), Modifier.animateItem()) }
             items(state.allDayEvents, key = ::eventKey) { event ->
-                EventRow(event, state.day, onOpen = { onOpenEvent(event) }, modifier = Modifier.animateItem())
+                EventSwipeRow(event, state.day, eventCallbacks, Modifier.animateItem())
             }
         }
 
@@ -325,7 +340,7 @@ private fun DayList(
                 when (item) {
                     is ScheduledItem.TaskItem -> TaskRow(item.task, today, taskCallbacks, Modifier.animateItem(), showTime)
                     is ScheduledItem.EventItem ->
-                        EventRow(item.event, state.day, onOpen = { onOpenEvent(item.event) }, modifier = Modifier.animateItem(), showTimeLabel = showTime)
+                        EventSwipeRow(item.event, state.day, eventCallbacks, Modifier.animateItem(), showTimeLabel = showTime)
                 }
             }
         }
@@ -465,6 +480,27 @@ private fun TaskRow(
             onOpen = { callbacks.onOpen(task.id) },
             onCheckboxTap = { callbacks.onCheckboxTap(task.id) },
             showTime = showTime,
+        )
+    }
+}
+
+/** A calendar event row: tap opens it in the calendar app; checkbox and swipe left set the app's own mark. */
+@Composable
+private fun EventSwipeRow(event: CalendarEvent, day: LocalDate, callbacks: EventCallbacks, modifier: Modifier = Modifier, showTimeLabel: Boolean = true) {
+    SwipeableRow(
+        allowLeft = canSwipeLeft(event),
+        allowRight = false,
+        leftRestores = event.status == TaskStatus.CANCELLED,
+        onSwipeLeft = { callbacks.onSwipeLeft(event) },
+        onSwipeRight = {},
+        modifier = modifier,
+    ) {
+        EventRow(
+            event = event,
+            day = day,
+            onOpen = { callbacks.onOpen(event) },
+            onCheckboxTap = { callbacks.onCheckboxTap(event) },
+            showTimeLabel = showTimeLabel,
         )
     }
 }
@@ -665,7 +701,7 @@ internal fun TimeColumn(start: String?, end: String?, dimmed: Boolean = false) {
 
 /** Square box: empty when open, green ✓ when done, grey ✕ when cancelled, → when moved. */
 @Composable
-private fun StatusCheckbox(status: TaskStatus, enabled: Boolean, onTap: () -> Unit) {
+internal fun StatusCheckbox(status: TaskStatus, enabled: Boolean, onTap: () -> Unit, openColor: Color? = null) {
     val colors = MaterialTheme.colorScheme
     val done = LocalStatusColors.current.done
     val fill by animateColorAsState(
@@ -678,7 +714,8 @@ private fun StatusCheckbox(status: TaskStatus, enabled: Boolean, onTap: () -> Un
     )
     val border = when (status) {
         // A box that cannot be ticked (a routine on a future day) is drawn fainter.
-        TaskStatus.OPEN -> if (enabled) colors.onSurfaceVariant else colors.outlineVariant
+        // An open calendar event borrows its calendar's color, so it reads as an event.
+        TaskStatus.OPEN -> if (enabled) openColor ?: colors.onSurfaceVariant else colors.outlineVariant
         TaskStatus.DONE -> done
         TaskStatus.CANCELLED -> colors.outline
         TaskStatus.MOVED -> Color.Transparent
@@ -757,7 +794,7 @@ private fun DayContentPreview() {
             ),
             onPreviousDay = {}, onNextDay = {}, onToday = {}, taskCallbacks = TaskCallbacks.None, routineCallbacks = RoutineCallbacks.None,
             onAddTask = {}, onOpenBacklog = {}, onOpenReview = {}, onToggleScheduledSort = {},
-            calendarPrompt = null, onOpenEvent = {}, onConnectCalendar = null,
+            calendarPrompt = null, eventCallbacks = EventCallbacks.None, onConnectCalendar = null,
         )
     }
 }
@@ -774,7 +811,7 @@ private fun DayContentDarkPreview() {
             ),
             onPreviousDay = {}, onNextDay = {}, onToday = {}, taskCallbacks = TaskCallbacks.None, routineCallbacks = RoutineCallbacks.None,
             onAddTask = {}, onOpenBacklog = {}, onOpenReview = {}, onToggleScheduledSort = {},
-            calendarPrompt = null, onOpenEvent = {}, onConnectCalendar = null,
+            calendarPrompt = null, eventCallbacks = EventCallbacks.None, onConnectCalendar = null,
         )
     }
 }
@@ -788,7 +825,7 @@ private fun DayContentYesterdayPreview() {
             state = buildDayUiState(today.minusDays(1), today, sampleTasks(today)),
             onPreviousDay = {}, onNextDay = {}, onToday = {}, taskCallbacks = TaskCallbacks.None, routineCallbacks = RoutineCallbacks.None,
             onAddTask = {}, onOpenBacklog = {}, onOpenReview = {}, onToggleScheduledSort = {},
-            calendarPrompt = null, onOpenEvent = {}, onConnectCalendar = null,
+            calendarPrompt = null, eventCallbacks = EventCallbacks.None, onConnectCalendar = null,
         )
     }
 }
@@ -802,7 +839,7 @@ private fun DayContentEmptyPreview() {
             state = buildDayUiState(today.plusDays(1), today, emptyList()),
             onPreviousDay = {}, onNextDay = {}, onToday = {}, taskCallbacks = TaskCallbacks.None, routineCallbacks = RoutineCallbacks.None,
             onAddTask = {}, onOpenBacklog = {}, onOpenReview = {}, onToggleScheduledSort = {},
-            calendarPrompt = null, onOpenEvent = {}, onConnectCalendar = null,
+            calendarPrompt = null, eventCallbacks = EventCallbacks.None, onConnectCalendar = null,
         )
     }
 }

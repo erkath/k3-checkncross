@@ -22,14 +22,17 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import me.k3.organizer.OrganizerApp
 import me.k3.organizer.data.AppPreferences
+import me.k3.organizer.data.EventMarkRepository
 import me.k3.organizer.data.RoutineRepository
 import me.k3.organizer.data.TaskActions
 import me.k3.organizer.data.TaskRepository
 import me.k3.organizer.data.calendar.CalendarSource
 import me.k3.organizer.model.CalendarEvent
+import me.k3.organizer.model.EventMark
 import me.k3.organizer.model.Routine
 import me.k3.organizer.model.RoutineMark
 import me.k3.organizer.model.Task
+import me.k3.organizer.model.TaskStatus
 import me.k3.organizer.ui.common.TodayTracker
 import java.time.DayOfWeek
 import java.time.LocalDate
@@ -40,6 +43,7 @@ import java.util.Locale
 class DayViewModel(
     private val repository: TaskRepository,
     private val routineRepository: RoutineRepository,
+    private val eventMarkRepository: EventMarkRepository,
     private val calendar: CalendarSource,
     private val preferences: AppPreferences,
     /** For weekly routines: which day a week starts on (from the phone's locale). */
@@ -75,24 +79,36 @@ class DayViewModel(
             Log.w(TAG, "Calendar read failed", e)
             emptyList()
         }
+    /** Routines and event marks, plus the Scheduled sort option; one flow, since combine takes at most five. */
+    private val extras = combine(
+        routineRepository.routines,
+        routineRepository.marks,
+        eventMarkRepository.marks,
+        preferences.scheduledClosedLast,
+        ::Extras,
+    )
 
-    /** Routines with their marks and the Scheduled sort option; one flow, since combine takes at most five. */
-    private val extras = combine(routineRepository.routines, routineRepository.marks, preferences.scheduledClosedLast, ::Extras)
-
-    private class Extras(val routines: List<Routine>, val marks: List<RoutineMark>, val scheduledClosedLast: Boolean)
+    private class Extras(
+        val routines: List<Routine>,
+        val routineMarks: List<RoutineMark>,
+        val eventMarks: List<EventMark>,
+        val scheduledClosedLast: Boolean,
+    )
 
     val uiState: StateFlow<DayUiState> =
         combine(day, todayTracker.flow, repository.tasks, events, extras) { day, today, tasks, events, extras ->
             buildDayUiState(
-                day,
-                today,
-                tasks,
+                day = day,
+                today = today,
+                tasks = tasks,
                 // Events still loading for a newly shown day: show none rather than the previous day's.
-                if (events.day == day) events.events else emptyList(),
-                routinesOn(day, today, extras.routines, extras.marks, firstDayOfWeek),
-                extras.scheduledClosedLast,
+                events = if (events.day == day) events.events else emptyList(),
+                routines = routinesOn(day, today, extras.routines, extras.routineMarks, firstDayOfWeek),
+                eventMarks = extras.eventMarks,
+                scheduledClosedLast = extras.scheduledClosedLast,
             )
         }
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), DayUiState(day = today, today = today))
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), DayUiState(day = today, today = today))
 
     fun previousDay() = day.update { it.minusDays(1) }
@@ -112,6 +128,24 @@ class DayViewModel(
 
     fun onCheckboxTap(taskId: Long) = updateTask(taskId, ::tapCheckbox)
     fun onSwipeLeft(taskId: Long) = updateTask(taskId, ::swipeLeft)
+
+    /** Checkbox on a calendar event: the app's own mark, the calendar is not changed. */
+    fun onEventCheckboxTap(event: CalendarEvent) = setEventMark(event, eventCheckboxTap(event))
+
+    /** Swipe left on a calendar event: crossed out (skipped) / open again. */
+    fun onEventSwipeLeft(event: CalendarEvent) {
+        if (canSwipeLeft(event)) setEventMark(event, eventSwipeLeft(event))
+    }
+
+    private fun setEventMark(event: CalendarEvent, status: TaskStatus?) {
+        launchAction {
+            if (status == null) {
+                eventMarkRepository.clear(event.eventId, event.beginMillis)
+            } else {
+                eventMarkRepository.set(EventMark(event.eventId, event.beginMillis, status))
+            }
+        }
+    }
 
     /** Checkbox on a routine: done for this day (or week) / not done again. */
     fun onRoutineTap(item: RoutineItem) = applyRoutineChange(routineCheckboxTap(item, day.value))
@@ -336,6 +370,7 @@ class DayViewModel(
                 DayViewModel(
                     app.taskRepository,
                     app.routineRepository,
+                    app.eventMarkRepository,
                     app.calendarSource,
                     app.preferences,
                     WeekFields.of(Locale.getDefault()).firstDayOfWeek,

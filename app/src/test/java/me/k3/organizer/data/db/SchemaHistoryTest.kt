@@ -55,6 +55,7 @@ class SchemaHistoryTest {
         val SHIPPED = mapOf(
             1 to "eb630d9bd0881c457e11a5b829064e66",
             2 to "c60302ccc9cb888b440f917ceff7c700",
+            3 to "cf7bdfd723311cd58c8cd7ff9420c770",
         )
     }
 }

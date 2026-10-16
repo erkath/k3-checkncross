@@ -1,6 +1,8 @@
 package me.k3.organizer.ui.day
 
 import me.k3.organizer.model.CalendarEvent
+import me.k3.organizer.model.EventMark
+import me.k3.organizer.model.applyEventMarks
 import me.k3.organizer.model.Placement
 import me.k3.organizer.model.Task
 import me.k3.organizer.model.TaskStatus
@@ -37,15 +39,20 @@ data class DayUiState(
 sealed interface ScheduledItem {
     fun sortTimeOn(day: LocalDate): LocalTime
 
+    /** A task's status, or an event's status from the app's own mark. */
+    val status: TaskStatus
+
     /** What the time column shows as the start on [day]. */
     fun startLabelOn(day: LocalDate): String
 
     data class TaskItem(val task: Task) : ScheduledItem {
+        override val status: TaskStatus get() = task.status
         override fun sortTimeOn(day: LocalDate): LocalTime = checkNotNull(task.startTime)
         override fun startLabelOn(day: LocalDate): String = checkNotNull(task.startTime).toString()
     }
 
     data class EventItem(val event: CalendarEvent) : ScheduledItem {
+        override val status: TaskStatus get() = event.status
         override fun sortTimeOn(day: LocalDate): LocalTime = event.sortTimeOn(day)
         override fun startLabelOn(day: LocalDate): String = event.startLabelOn(day)
     }
@@ -69,9 +76,12 @@ fun buildDayUiState(
     tasks: List<Task>,
     events: List<CalendarEvent> = emptyList(),
     routines: List<RoutineItem> = emptyList(),
+    /** The app's checks and crosses on [events]; see [applyEventMarks]. */
+    eventMarks: List<EventMark> = emptyList(),
     /** "Done to the bottom" for "Scheduled": closed tasks leave the timeline and go last. */
     scheduledClosedLast: Boolean = false,
 ): DayUiState {
+    val markedEvents = applyEventMarks(events, eventMarks)
     val onDay = tasks.filter { it.day == day }
     val closedLast = compareBy<Task> { statusRank(it.status) }
     val timed = onDay
@@ -88,24 +98,25 @@ fun buildDayUiState(
             .filter { it.day == null && it.status == TaskStatus.OPEN }
             .sortedBy { it.id },
         overdue = overdueTasks(tasks, today),
-        allDayEvents = events.filter { it.allDay },
-        scheduled = scheduledItems(day, timed, events.filter { !it.allDay }, scheduledClosedLast),
+        allDayEvents = markedEvents.filter { it.allDay },
+        scheduled = scheduledItems(day, timed, markedEvents.filter { !it.allDay }, scheduledClosedLast),
         scheduledClosedLast = scheduledClosedLast,
         routines = routines,
     )
 }
 
 /**
- * The "Scheduled" section. By default a timeline: timed tasks, whatever their status, and timed
- * events, all by start time. With [closedLast], closed tasks leave the timeline and go last (in
- * their usual order: done, then grey); events have no status and stay with the open work.
+ * The "Scheduled" section. By default a timeline: timed tasks and timed events, whatever their
+ * status, all by start time. With [closedLast], closed ones (tasks, and events the user checked or
+ * crossed) leave the timeline and go last: done, then grey, each by time.
  * On a tie a task comes before an event, and tasks keep their order (open before closed).
  */
 private fun scheduledItems(day: LocalDate, timed: List<Task>, events: List<CalendarEvent>, closedLast: Boolean): List<ScheduledItem> {
-    val (live, closed) = if (closedLast) timed.partition { it.status == TaskStatus.OPEN } else timed to emptyList()
-    // sortedBy is stable, so ties keep the order of this list.
-    val timeline = (live.map { ScheduledItem.TaskItem(it) } + events.map { ScheduledItem.EventItem(it) }).sortedBy { it.sortTimeOn(day) }
-    return timeline + closed.map { ScheduledItem.TaskItem(it) }
+    // sortedBy is stable, so ties keep the order of this list: tasks (already ordered) before events.
+    val all = timed.map { ScheduledItem.TaskItem(it) } + events.map { ScheduledItem.EventItem(it) }
+    if (!closedLast) return all.sortedBy { it.sortTimeOn(day) }
+    val (open, closed) = all.partition { it.status == TaskStatus.OPEN }
+    return open.sortedBy { it.sortTimeOn(day) } + closed.sortedWith(compareBy({ statusRank(it.status) }, { it.sortTimeOn(day) }))
 }
 
 /**
@@ -156,3 +167,14 @@ fun overdueTasks(tasks: List<Task>, today: LocalDate): List<Task> =
 /** The day to show once "today" changes: a screen that was on today follows it; one browsing another day stays. */
 fun shownDayAfterTodayChange(shown: LocalDate, oldToday: LocalDate, newToday: LocalDate): LocalDate =
     if (shown == oldToday) newToday else shown
+
+/** Checkbox on an event: open → done; done or crossed → open. Returns the new mark status, null for "no mark". */
+fun eventCheckboxTap(event: CalendarEvent): TaskStatus? =
+    if (event.status == TaskStatus.OPEN) TaskStatus.DONE else null
+
+/** Swipe left on an event: open → crossed; crossed → open. Not on a done one (see [canSwipeLeft]). */
+fun eventSwipeLeft(event: CalendarEvent): TaskStatus? =
+    if (event.status == TaskStatus.OPEN) TaskStatus.CANCELLED else null
+
+fun canSwipeLeft(event: CalendarEvent): Boolean =
+    event.status == TaskStatus.OPEN || event.status == TaskStatus.CANCELLED

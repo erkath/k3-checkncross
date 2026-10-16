@@ -1,7 +1,6 @@
 package me.k3.organizer.ui.week
 
 import androidx.compose.foundation.border
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -10,7 +9,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -153,13 +151,13 @@ private fun WeekDayCard(day: DayUiState, onOpen: () -> Unit) {
             if (day.isEmpty) {
                 Text(stringResource(R.string.week_nothing), style = MaterialTheme.typography.bodySmall, color = colors.onSurfaceVariant)
             }
-            day.allDayEvents.forEach { EventLine(it, day.day, time = null) }
+            day.allDayEvents.forEach { EventLine(it, time = null) }
             // As on the Day screen: a start time shared by several lines in a row is written once.
             val slots = timeSlots(day.scheduled, day.day)
             day.scheduled.forEachIndexed { index, item ->
                 when (item) {
                     is ScheduledItem.TaskItem -> TaskLine(item.task, time = slots[index])
-                    is ScheduledItem.EventItem -> EventLine(item.event, day.day, time = slots[index])
+                    is ScheduledItem.EventItem -> EventLine(item.event, time = slots[index])
                 }
             }
             day.untimed.forEach { TaskLine(it, time = null) }
@@ -185,23 +183,18 @@ private fun TaskLine(task: Task, time: String?) {
     }
 }
 
-/** A calendar event in one line: [time] (blank if null, e.g. all-day), a bar in its color, the title. */
+/** A calendar event in one line, like a task: [time] (blank if null), a status mark in its calendar's color, the title. */
 @Composable
-private fun EventLine(event: CalendarEvent, day: LocalDate, time: String?) {
+private fun EventLine(event: CalendarEvent, time: String?) {
     Row(verticalAlignment = Alignment.CenterVertically) {
         LineTime(time)
-        Box(Modifier.size(width = 14.dp, height = 14.dp), contentAlignment = Alignment.Center) {
-            Box(
-                Modifier
-                    .width(3.dp)
-                    .height(14.dp)
-                    .background(event.color?.let { Color(it) } ?: MaterialTheme.colorScheme.primary, RoundedCornerShape(2.dp)),
-            )
-        }
+        StatusMark(event.status, openColor = event.color?.let { Color(it) } ?: MaterialTheme.colorScheme.primary)
         Spacer(Modifier.width(8.dp))
         Text(
             event.title.ifEmpty { stringResource(R.string.event_no_title) },
             style = MaterialTheme.typography.bodyMedium,
+            color = taskTitleColor(event.status),
+            textDecoration = if (isStruckThrough(event.status)) TextDecoration.LineThrough else null,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
@@ -218,11 +211,11 @@ private fun LineTime(time: String?) {
 
 /** A small, non-interactive version of the Day screen's checkbox. */
 @Composable
-private fun StatusMark(status: TaskStatus) {
+private fun StatusMark(status: TaskStatus, openColor: Color? = null) {
     val colors = MaterialTheme.colorScheme
     val shape = RoundedCornerShape(3.dp)
     when (status) {
-        TaskStatus.OPEN -> Box(Modifier.size(14.dp).border(1.5.dp, colors.onSurfaceVariant, shape))
+        TaskStatus.OPEN -> Box(Modifier.size(14.dp).border(1.5.dp, openColor ?: colors.onSurfaceVariant, shape))
         TaskStatus.DONE -> Icon(painterResource(R.drawable.ic_check), null, tint = LocalStatusColors.current.done, modifier = Modifier.size(14.dp))
         TaskStatus.CANCELLED -> Icon(painterResource(R.drawable.ic_close), null, tint = colors.outline, modifier = Modifier.size(14.dp))
         TaskStatus.MOVED -> Icon(painterResource(R.drawable.ic_arrow_forward), null, tint = colors.outline, modifier = Modifier.size(14.dp))

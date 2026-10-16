@@ -10,36 +10,35 @@ import android.net.Uri
 import android.provider.CalendarContract
 import android.provider.Settings
 import android.util.Log
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import me.k3.organizer.R
 import me.k3.organizer.model.CalendarEvent
+import me.k3.organizer.model.TaskStatus
+import me.k3.organizer.ui.common.isStruckThrough
+import me.k3.organizer.ui.common.taskTitleColor
 import me.k3.organizer.ui.theme.MyOrganizerTheme
 import java.time.LocalDate
 
@@ -47,49 +46,55 @@ import java.time.LocalDate
 class CalendarPromptActions(val onAllow: () -> Unit, val onDismiss: () -> Unit)
 
 /**
- * A calendar event in the day list. No checkbox and no swipes: events belong to the calendar app,
- * which a tap opens. The colored bar sits where a task's checkbox is, so titles line up. With
- * [showTime] (timed events in "Scheduled") the time column comes first, as for timed tasks.
+ * A calendar event in the day list: like a task row, with a checkbox for the app's own mark (the
+ * calendar is not changed) whose open border has the calendar's color. A tap on the row opens the
+ * event in the calendar app. With [showTime] (timed events in "Scheduled") the time column comes
+ * first, as for timed tasks; [showTimeLabel] false leaves it blank under a repeated start.
+ * Swipes are added around it by the Day screen.
  */
 @Composable
 fun EventRow(
     event: CalendarEvent,
     day: LocalDate,
     onOpen: () -> Unit,
+    onCheckboxTap: () -> Unit,
     modifier: Modifier = Modifier,
     showTime: Boolean = !event.allDay,
-    /** False when the start repeats the row above: the time column stays, blank. */
     showTimeLabel: Boolean = true,
 ) {
     val colors = MaterialTheme.colorScheme
+    val textColor by animateColorAsState(taskTitleColor(event.status), label = "eventTextColor")
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = modifier
             .fillMaxWidth()
-            .height(IntrinsicSize.Min)
+            // Opaque, so the swipe background shows only where the row has slid away.
+            .background(colors.surface)
             .clickable(onClick = onOpen)
             .padding(start = if (showTime) 16.dp else 4.dp, end = 16.dp),
     ) {
         if (showTime) {
-            TimeColumn(start = event.startLabelOn(day).takeIf { showTimeLabel }, end = event.endLabelOn(day).takeIf { showTimeLabel })
-        }
-        Box(contentAlignment = Alignment.Center, modifier = Modifier.width(48.dp).fillMaxHeight().padding(vertical = 8.dp)) {
-            Box(
-                Modifier
-                    .width(4.dp)
-                    .fillMaxHeight()
-                    .clip(RoundedCornerShape(2.dp))
-                    .background(event.color?.let { Color(it) } ?: colors.primary),
+            TimeColumn(
+                start = event.startLabelOn(day).takeIf { showTimeLabel },
+                end = event.endLabelOn(day).takeIf { showTimeLabel },
+                dimmed = event.status != TaskStatus.OPEN,
             )
         }
+        StatusCheckbox(
+            event.status,
+            enabled = true,
+            onTap = onCheckboxTap,
+            openColor = event.color?.let { Color(it) } ?: colors.primary,
+        )
         Column(modifier = Modifier.weight(1f).padding(vertical = 8.dp)) {
             Text(
                 event.title.ifEmpty { stringResource(R.string.event_no_title) },
                 style = MaterialTheme.typography.bodyLarge,
-                color = colors.onSurface,
+                color = textColor,
+                textDecoration = if (isStruckThrough(event.status)) TextDecoration.LineThrough else null,
             )
             event.location?.let {
-                Text(it, style = MaterialTheme.typography.bodySmall, color = colors.onSurfaceVariant)
+                Text(it, style = MaterialTheme.typography.bodySmall, color = if (event.status == TaskStatus.OPEN) colors.onSurfaceVariant else textColor)
             }
         }
     }
