@@ -45,25 +45,36 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.launch
 import me.k3.organizer.R
+import me.k3.organizer.data.sampleRoutineMarks
 import me.k3.organizer.data.sampleRoutines
 import me.k3.organizer.model.Frequency
 import me.k3.organizer.model.Routine
+import me.k3.organizer.model.RoutineMark
+import me.k3.organizer.model.TaskStatus
 import me.k3.organizer.ui.theme.MyOrganizerTheme
+import java.time.DayOfWeek
 import java.time.LocalDate
 
 /** Routines tab bound to its ViewModel. */
 @Composable
 fun RoutinesScreen(viewModel: RoutinesViewModel, modifier: Modifier = Modifier) {
-    val routines by viewModel.routines.collectAsStateWithLifecycle()
-    RoutinesContent(routines, onAdd = viewModel::startNew, onOpen = viewModel::open, modifier = modifier)
+    val items by viewModel.items.collectAsStateWithLifecycle()
+    // The stats count up to today, which may have changed while the app was away.
+    LifecycleResumeEffect(viewModel) {
+        viewModel.onResume()
+        onPauseOrDispose {}
+    }
+    RoutinesContent(items, onAdd = viewModel::startNew, onOpen = viewModel::open, modifier = modifier)
     viewModel.sheet?.let { sheet ->
         RoutineSheet(
             sheet = sheet,
@@ -75,9 +86,9 @@ fun RoutinesScreen(viewModel: RoutinesViewModel, modifier: Modifier = Modifier) 
     }
 }
 
-/** Stateless list of routines with a "+" button. */
+/** Stateless list of routines (with their stats) and a "+" button. */
 @Composable
-fun RoutinesContent(routines: List<Routine>, onAdd: () -> Unit, onOpen: (Routine) -> Unit, modifier: Modifier = Modifier) {
+fun RoutinesContent(items: List<RoutineListItem>, onAdd: () -> Unit, onOpen: (Routine) -> Unit, modifier: Modifier = Modifier) {
     Scaffold(
         modifier = modifier.fillMaxSize(),
         // System bars are handled by AppRoot's Scaffold around this screen.
@@ -99,7 +110,7 @@ fun RoutinesContent(routines: List<Routine>, onAdd: () -> Unit, onOpen: (Routine
                     HorizontalDivider()
                 }
             }
-            if (routines.isEmpty()) {
+            if (items.isEmpty()) {
                 item {
                     Text(
                         stringResource(R.string.routines_empty),
@@ -109,15 +120,16 @@ fun RoutinesContent(routines: List<Routine>, onAdd: () -> Unit, onOpen: (Routine
                     )
                 }
             }
-            items(routines, key = { it.id }) { routine ->
-                RoutineListRow(routine, onOpen = { onOpen(routine) }, modifier = Modifier.animateItem())
+            items(items, key = { it.routine.id }) { item ->
+                RoutineListRow(item, onOpen = { onOpen(item.routine) }, modifier = Modifier.animateItem())
             }
         }
     }
 }
 
 @Composable
-private fun RoutineListRow(routine: Routine, onOpen: () -> Unit, modifier: Modifier = Modifier) {
+private fun RoutineListRow(item: RoutineListItem, onOpen: () -> Unit, modifier: Modifier = Modifier) {
+    val routine = item.routine
     val colors = MaterialTheme.colorScheme
     val details = listOfNotNull(
         frequencyLabel(routine.frequency),
@@ -142,8 +154,30 @@ private fun RoutineListRow(routine: Routine, onOpen: () -> Unit, modifier: Modif
                 color = if (routine.active) colors.onSurface else colors.outline,
             )
             Text(details.joinToString(" · "), style = MaterialTheme.typography.bodySmall, color = colors.onSurfaceVariant)
+            statsLabel(routine.frequency, item.stats)?.let {
+                Text(it, style = MaterialTheme.typography.bodySmall, color = if (routine.active) colors.primary else colors.outline)
+            }
         }
     }
+}
+
+/** "5 of last 7 days · 12-day streak"; the streak only from 2 on; nothing before there is anything to count. */
+@Composable
+private fun statsLabel(frequency: Frequency, stats: RoutineStats): String? {
+    if (stats.outOf == 0) return null
+    val daily = frequency == Frequency.DAILY
+    val ratio = pluralStringResource(
+        if (daily) R.plurals.routine_stats_days else R.plurals.routine_stats_weeks,
+        stats.outOf,
+        stats.done,
+        stats.outOf,
+    )
+    val streak = if (stats.streak >= 2) {
+        pluralStringResource(if (daily) R.plurals.routine_streak_days else R.plurals.routine_streak_weeks, stats.streak, stats.streak)
+    } else {
+        null
+    }
+    return listOfNotNull(ratio, streak).joinToString(" · ")
 }
 
 @Composable
@@ -273,7 +307,10 @@ private val previewToday = LocalDate.of(2026, 10, 15)
 @Composable
 private fun RoutinesPreview() {
     val routines = routineListOrder(sampleRoutines(previewToday) + Routine(id = 4, title = "Water plants", frequency = Frequency.WEEKLY, createdOn = previewToday, active = false))
-    MyOrganizerTheme { RoutinesContent(routines, onAdd = {}, onOpen = {}) }
+    val marks = (0L..12L).map { RoutineMark(1, previewToday.minusDays(it), TaskStatus.DONE, previewToday.minusDays(it)) } +
+        sampleRoutineMarks(previewToday)
+    val items = routines.map { RoutineListItem(it, routineStats(it, marks, previewToday, DayOfWeek.MONDAY)) }
+    MyOrganizerTheme { RoutinesContent(items, onAdd = {}, onOpen = {}) }
 }
 
 @Preview(showBackground = true)

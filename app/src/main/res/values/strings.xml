@@ -88,6 +88,23 @@
     <string name="routine_delete_title">Delete routine?</string>
     <string name="routine_delete_text">“%1$s” and all its ticks will be deleted. To stop it but keep the history, pause it instead.</string>
 
+    <plurals name="routine_stats_days">
+        <item quantity="one">%1$d of last %2$d day</item>
+        <item quantity="other">%1$d of last %2$d days</item>
+    </plurals>
+    <plurals name="routine_stats_weeks">
+        <item quantity="one">%1$d of last %2$d week</item>
+        <item quantity="other">%1$d of last %2$d weeks</item>
+    </plurals>
+    <plurals name="routine_streak_days">
+        <item quantity="one">%1$d-day streak</item>
+        <item quantity="other">%1$d-day streak</item>
+    </plurals>
+    <plurals name="routine_streak_weeks">
+        <item quantity="one">%1$d-week streak</item>
+        <item quantity="other">%1$d-week streak</item>
+    </plurals>
+
     <string name="action_add">Add</string>
     <string name="action_save">Save</string>
     <string name="action_delete">Delete</string>

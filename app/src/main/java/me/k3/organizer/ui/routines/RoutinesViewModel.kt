@@ -12,22 +12,35 @@ import androidx.lifecycle.viewmodel.viewModelFactory
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import me.k3.organizer.OrganizerApp
 import me.k3.organizer.data.RoutineRepository
 import me.k3.organizer.model.Routine
+import me.k3.organizer.ui.common.TodayTracker
+import java.time.DayOfWeek
 import java.time.LocalDateTime
+import java.time.temporal.WeekFields
+import java.util.Locale
 
 /** The Routines tab: the list of routines and the sheet to add or edit one. */
 class RoutinesViewModel(
     private val repository: RoutineRepository,
+    private val firstDayOfWeek: DayOfWeek,
     private val now: () -> LocalDateTime = LocalDateTime::now,
 ) : ViewModel() {
-    val routines: StateFlow<List<Routine>> = repository.routines
-        .map(::routineListOrder)
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+    /** Stats depend on the date; it follows midnight and is re-read on resume. */
+    private val todayTracker = TodayTracker(now, viewModelScope)
+
+    /** Every routine with its stats, in list order. */
+    val items: StateFlow<List<RoutineListItem>> =
+        combine(repository.routines, repository.marks, todayTracker.flow) { routines, marks, today ->
+            routineListOrder(routines).map { RoutineListItem(it, routineStats(it, marks, today, firstDayOfWeek)) }
+        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    /** Call when the screen is resumed: the date may have changed meanwhile. */
+    fun onResume() = todayTracker.refresh()
 
     /** The open sheet, or null. Compose state so the text fields never lose typed characters. */
     var sheet: RoutineSheetState? by mutableStateOf(null)
@@ -86,7 +99,7 @@ class RoutinesViewModel(
         val Factory = viewModelFactory {
             initializer {
                 val app = this[APPLICATION_KEY] as OrganizerApp
-                RoutinesViewModel(app.routineRepository)
+                RoutinesViewModel(app.routineRepository, WeekFields.of(Locale.getDefault()).firstDayOfWeek)
             }
         }
     }
