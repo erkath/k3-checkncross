@@ -5,9 +5,11 @@
     <!-- Read-only: events are shown next to the day's tasks, never changed. -->
     <uses-permission android:name="android.permission.READ_CALENDAR" />
 
+    <!-- The user's data must not be copied to Google's cloud backup: allowBackup="false" for Android 8-11,
+         dataExtractionRules for Android 12+. -->
     <application
         android:name=".OrganizerApp"
-        android:allowBackup="true"
+        android:allowBackup="false"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:fullBackupContent="@xml/backup_rules"
         android:icon="@mipmap/ic_launcher"
