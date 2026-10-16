@@ -71,6 +71,7 @@
     </plurals>
 
     <string name="day_section_routines">Routines</string>
+    <string name="scheduled_closed_last">Done tasks at the bottom</string>
     <string name="routine_daily">Daily</string>
     <string name="routine_this_week">This week</string>
 

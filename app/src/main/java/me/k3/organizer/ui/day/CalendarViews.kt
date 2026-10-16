@@ -52,7 +52,15 @@ class CalendarPromptActions(val onAllow: () -> Unit, val onDismiss: () -> Unit)
  * [showTime] (timed events in "Scheduled") the time column comes first, as for timed tasks.
  */
 @Composable
-fun EventRow(event: CalendarEvent, day: LocalDate, onOpen: () -> Unit, modifier: Modifier = Modifier, showTime: Boolean = !event.allDay) {
+fun EventRow(
+    event: CalendarEvent,
+    day: LocalDate,
+    onOpen: () -> Unit,
+    modifier: Modifier = Modifier,
+    showTime: Boolean = !event.allDay,
+    /** False when the start repeats the row above: the time column stays, blank. */
+    showTimeLabel: Boolean = true,
+) {
     val colors = MaterialTheme.colorScheme
     Row(
         verticalAlignment = Alignment.CenterVertically,
@@ -62,7 +70,9 @@ fun EventRow(event: CalendarEvent, day: LocalDate, onOpen: () -> Unit, modifier:
             .clickable(onClick = onOpen)
             .padding(start = if (showTime) 16.dp else 4.dp, end = 16.dp),
     ) {
-        if (showTime) TimeColumn(start = event.startLabelOn(day), end = event.endLabelOn(day))
+        if (showTime) {
+            TimeColumn(start = event.startLabelOn(day).takeIf { showTimeLabel }, end = event.endLabelOn(day).takeIf { showTimeLabel })
+        }
         Box(contentAlignment = Alignment.Center, modifier = Modifier.width(48.dp).fillMaxHeight().padding(vertical = 8.dp)) {
             Box(
                 Modifier

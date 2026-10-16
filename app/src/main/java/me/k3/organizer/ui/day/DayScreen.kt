@@ -27,6 +27,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
@@ -34,6 +35,7 @@ import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.IconToggleButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -140,6 +142,7 @@ fun DayScreen(modifier: Modifier = Modifier, viewModel: DayViewModel = viewModel
         onAddTask = viewModel::startNewTask,
         onOpenBacklog = viewModel::openBacklog,
         onOpenReview = viewModel::openReview,
+        onToggleScheduledSort = viewModel::toggleScheduledClosedLast,
         calendarPrompt = if (viewModel.calendarPromptVisible) {
             CalendarPromptActions(
                 onAllow = connectCalendar,
@@ -229,6 +232,7 @@ fun DayContent(
     onAddTask: () -> Unit,
     onOpenBacklog: () -> Unit,
     onOpenReview: () -> Unit,
+    onToggleScheduledSort: () -> Unit,
     calendarPrompt: CalendarPromptActions?,
     onOpenEvent: (CalendarEvent) -> Unit,
     /** Shows a "Connect calendar" row at the end of the list; null hides it. */
@@ -246,7 +250,7 @@ fun DayContent(
         },
     ) { innerPadding ->
         DayList(
-            state, state.today, onPreviousDay, onNextDay, onToday, onOpenBacklog, onOpenReview,
+            state, state.today, onPreviousDay, onNextDay, onToday, onOpenBacklog, onOpenReview, onToggleScheduledSort,
             calendarPrompt, onOpenEvent, onConnectCalendar, taskCallbacks, routineCallbacks, Modifier.padding(innerPadding),
         )
     }
@@ -261,6 +265,7 @@ private fun DayList(
     onToday: () -> Unit,
     onOpenBacklog: () -> Unit,
     onOpenReview: () -> Unit,
+    onToggleScheduledSort: () -> Unit,
     calendarPrompt: CalendarPromptActions?,
     onOpenEvent: (CalendarEvent) -> Unit,
     /** Shows a "Connect calendar" row at the end of the list; null hides it. */
@@ -300,19 +305,27 @@ private fun DayList(
         }
 
         if (state.scheduled.isNotEmpty()) {
-            item(key = R.string.day_section_timed) { SectionTitle(stringResource(R.string.day_section_timed), Modifier.animateItem()) }
-            items(
+            item(key = R.string.day_section_timed) {
+                SectionTitle(stringResource(R.string.day_section_timed), Modifier.animateItem()) {
+                    ScheduledSortToggle(state.scheduledClosedLast, onToggleScheduledSort)
+                }
+            }
+            // The start time is written once for a run of rows that begin together.
+            val slots = timeSlots(state.scheduled, state.day)
+            itemsIndexed(
                 state.scheduled,
-                key = {
+                key = { _, it ->
                     when (it) {
                         is ScheduledItem.TaskItem -> it.task.id
                         is ScheduledItem.EventItem -> eventKey(it.event)
                     }
                 },
-            ) { item ->
+            ) { index, item ->
+                val showTime = slots[index] != null
                 when (item) {
-                    is ScheduledItem.TaskItem -> TaskRow(item.task, today, taskCallbacks, Modifier.animateItem())
-                    is ScheduledItem.EventItem -> EventRow(item.event, state.day, onOpen = { onOpenEvent(item.event) }, modifier = Modifier.animateItem())
+                    is ScheduledItem.TaskItem -> TaskRow(item.task, today, taskCallbacks, Modifier.animateItem(), showTime)
+                    is ScheduledItem.EventItem ->
+                        EventRow(item.event, state.day, onOpen = { onOpenEvent(item.event) }, modifier = Modifier.animateItem(), showTimeLabel = showTime)
                 }
             }
         }
@@ -403,18 +416,41 @@ private fun BacklogButton(count: Int, onClick: () -> Unit) {
 }
 
 @Composable
-private fun SectionTitle(text: String, modifier: Modifier = Modifier) {
-    Text(
-        text = text,
-        style = MaterialTheme.typography.labelLarge,
-        color = MaterialTheme.colorScheme.primary,
-        modifier = modifier.padding(start = 16.dp, top = 16.dp, bottom = 4.dp),
-    )
+private fun SectionTitle(text: String, modifier: Modifier = Modifier, trailing: (@Composable () -> Unit)? = null) {
+    Row(verticalAlignment = Alignment.Bottom, modifier = modifier.fillMaxWidth().padding(end = 4.dp)) {
+        Text(
+            text = text,
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.weight(1f).padding(start = 16.dp, top = 16.dp, bottom = 4.dp),
+        )
+        trailing?.invoke()
+    }
+}
+
+/** "Done tasks at the bottom" for the Scheduled section; highlighted while on. */
+@Composable
+private fun ScheduledSortToggle(closedLast: Boolean, onToggle: () -> Unit) {
+    val colors = MaterialTheme.colorScheme
+    IconToggleButton(checked = closedLast, onCheckedChange = { onToggle() }) {
+        Icon(
+            painterResource(R.drawable.ic_vertical_align_bottom),
+            contentDescription = stringResource(R.string.scheduled_closed_last),
+            tint = if (closedLast) colors.primary else colors.outline,
+        )
+    }
 }
 
 /** A task row: tap opens the task; swipe left crosses it out (or restores); swipe right moves it to the next day. */
 @Composable
-private fun TaskRow(task: Task, today: LocalDate, callbacks: TaskCallbacks, modifier: Modifier = Modifier) {
+private fun TaskRow(
+    task: Task,
+    today: LocalDate,
+    callbacks: TaskCallbacks,
+    modifier: Modifier = Modifier,
+    /** False for a timed task whose start repeats the row above: its time column stays blank. */
+    showTime: Boolean = true,
+) {
     SwipeableRow(
         allowLeft = canSwipeLeft(task),
         allowRight = canSwipeRight(task),
@@ -428,6 +464,7 @@ private fun TaskRow(task: Task, today: LocalDate, callbacks: TaskCallbacks, modi
             today = today,
             onOpen = { callbacks.onOpen(task.id) },
             onCheckboxTap = { callbacks.onCheckboxTap(task.id) },
+            showTime = showTime,
         )
     }
 }
@@ -573,7 +610,7 @@ private fun SwipeBackground(direction: SwipeDirection, restore: Boolean, armed: 
 }
 
 @Composable
-private fun TaskRowContent(task: Task, today: LocalDate, onOpen: () -> Unit, onCheckboxTap: () -> Unit) {
+private fun TaskRowContent(task: Task, today: LocalDate, onOpen: () -> Unit, onCheckboxTap: () -> Unit, showTime: Boolean = true) {
     val colors = MaterialTheme.colorScheme
     val textColor by animateColorAsState(taskTitleColor(task.status), label = "taskTextColor")
     val struck = isStruckThrough(task.status)
@@ -592,8 +629,8 @@ private fun TaskRowContent(task: Task, today: LocalDate, onOpen: () -> Unit, onC
         // Timed tasks read as a timeline: time, checkbox, title.
         timed?.let {
             TimeColumn(
-                start = it.start.toString(),
-                end = it.start.plus(it.duration).toString(),
+                start = it.start.toString().takeIf { showTime },
+                end = it.start.plus(it.duration).toString().takeIf { showTime },
                 dimmed = task.status != TaskStatus.OPEN,
             )
         }
@@ -616,13 +653,13 @@ private fun TaskRowContent(task: Task, today: LocalDate, onOpen: () -> Unit, onC
     }
 }
 
-/** The time column of the "Scheduled" timeline: start above, end below and smaller. */
+/** The time column of the "Scheduled" timeline: start above, end below and smaller; blank (same width) when null. */
 @Composable
-internal fun TimeColumn(start: String, end: String, dimmed: Boolean = false) {
+internal fun TimeColumn(start: String?, end: String?, dimmed: Boolean = false) {
     val colors = MaterialTheme.colorScheme
     Column(modifier = Modifier.width(44.dp)) {
-        Text(start, style = MaterialTheme.typography.bodyMedium, color = if (dimmed) colors.outline else colors.onSurface)
-        Text(end, style = MaterialTheme.typography.bodySmall, color = if (dimmed) colors.outline else colors.onSurfaceVariant)
+        start?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = if (dimmed) colors.outline else colors.onSurface) }
+        end?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = if (dimmed) colors.outline else colors.onSurfaceVariant) }
     }
 }
 
@@ -719,7 +756,7 @@ private fun DayContentPreview() {
                 routinesOn(today, today, sampleRoutines(today), sampleRoutineMarks(today), DayOfWeek.MONDAY),
             ),
             onPreviousDay = {}, onNextDay = {}, onToday = {}, taskCallbacks = TaskCallbacks.None, routineCallbacks = RoutineCallbacks.None,
-            onAddTask = {}, onOpenBacklog = {}, onOpenReview = {},
+            onAddTask = {}, onOpenBacklog = {}, onOpenReview = {}, onToggleScheduledSort = {},
             calendarPrompt = null, onOpenEvent = {}, onConnectCalendar = null,
         )
     }
@@ -736,7 +773,7 @@ private fun DayContentDarkPreview() {
                 routinesOn(today, today, sampleRoutines(today), sampleRoutineMarks(today), DayOfWeek.MONDAY),
             ),
             onPreviousDay = {}, onNextDay = {}, onToday = {}, taskCallbacks = TaskCallbacks.None, routineCallbacks = RoutineCallbacks.None,
-            onAddTask = {}, onOpenBacklog = {}, onOpenReview = {},
+            onAddTask = {}, onOpenBacklog = {}, onOpenReview = {}, onToggleScheduledSort = {},
             calendarPrompt = null, onOpenEvent = {}, onConnectCalendar = null,
         )
     }
@@ -750,7 +787,7 @@ private fun DayContentYesterdayPreview() {
         DayContent(
             state = buildDayUiState(today.minusDays(1), today, sampleTasks(today)),
             onPreviousDay = {}, onNextDay = {}, onToday = {}, taskCallbacks = TaskCallbacks.None, routineCallbacks = RoutineCallbacks.None,
-            onAddTask = {}, onOpenBacklog = {}, onOpenReview = {},
+            onAddTask = {}, onOpenBacklog = {}, onOpenReview = {}, onToggleScheduledSort = {},
             calendarPrompt = null, onOpenEvent = {}, onConnectCalendar = null,
         )
     }
@@ -764,7 +801,7 @@ private fun DayContentEmptyPreview() {
         DayContent(
             state = buildDayUiState(today.plusDays(1), today, emptyList()),
             onPreviousDay = {}, onNextDay = {}, onToday = {}, taskCallbacks = TaskCallbacks.None, routineCallbacks = RoutineCallbacks.None,
-            onAddTask = {}, onOpenBacklog = {}, onOpenReview = {},
+            onAddTask = {}, onOpenBacklog = {}, onOpenReview = {}, onToggleScheduledSort = {},
             calendarPrompt = null, onOpenEvent = {}, onConnectCalendar = null,
         )
     }

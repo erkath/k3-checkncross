@@ -43,7 +43,6 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import me.k3.organizer.R
 import me.k3.organizer.data.sampleTasks
 import me.k3.organizer.model.CalendarEvent
-import me.k3.organizer.model.Placement
 import me.k3.organizer.model.Task
 import me.k3.organizer.model.TaskStatus
 import me.k3.organizer.ui.common.isStruckThrough
@@ -52,6 +51,7 @@ import me.k3.organizer.ui.day.DayUiState
 import me.k3.organizer.ui.day.ScheduledItem
 import me.k3.organizer.ui.day.relativeDayLabel
 import me.k3.organizer.ui.day.sampleEvents
+import me.k3.organizer.ui.day.timeSlots
 import me.k3.organizer.ui.theme.LocalStatusColors
 import me.k3.organizer.ui.theme.MyOrganizerTheme
 import java.time.DayOfWeek
@@ -153,23 +153,25 @@ private fun WeekDayCard(day: DayUiState, onOpen: () -> Unit) {
             if (day.isEmpty) {
                 Text(stringResource(R.string.week_nothing), style = MaterialTheme.typography.bodySmall, color = colors.onSurfaceVariant)
             }
-            day.allDayEvents.forEach { EventLine(it, day.day) }
-            day.scheduled.forEach {
-                when (it) {
-                    is ScheduledItem.TaskItem -> TaskLine(it.task)
-                    is ScheduledItem.EventItem -> EventLine(it.event, day.day)
+            day.allDayEvents.forEach { EventLine(it, day.day, time = null) }
+            // As on the Day screen: a start time shared by several lines in a row is written once.
+            val slots = timeSlots(day.scheduled, day.day)
+            day.scheduled.forEachIndexed { index, item ->
+                when (item) {
+                    is ScheduledItem.TaskItem -> TaskLine(item.task, time = slots[index])
+                    is ScheduledItem.EventItem -> EventLine(item.event, day.day, time = slots[index])
                 }
             }
-            day.untimed.forEach { TaskLine(it) }
+            day.untimed.forEach { TaskLine(it, time = null) }
         }
     }
 }
 
-/** A task in one line: start time (if any), a small status mark, the title styled as on the Day screen. */
+/** A task in one line: [time] (blank if null), a small status mark, the title styled as on the Day screen. */
 @Composable
-private fun TaskLine(task: Task) {
+private fun TaskLine(task: Task, time: String?) {
     Row(verticalAlignment = Alignment.CenterVertically) {
-        LineTime((task.placement as? Placement.Timed)?.start?.toString())
+        LineTime(time)
         StatusMark(task.status)
         Spacer(Modifier.width(8.dp))
         Text(
@@ -183,11 +185,11 @@ private fun TaskLine(task: Task) {
     }
 }
 
-/** A calendar event in one line: start time unless all-day, a bar in its color, the title. */
+/** A calendar event in one line: [time] (blank if null, e.g. all-day), a bar in its color, the title. */
 @Composable
-private fun EventLine(event: CalendarEvent, day: LocalDate) {
+private fun EventLine(event: CalendarEvent, day: LocalDate, time: String?) {
     Row(verticalAlignment = Alignment.CenterVertically) {
-        LineTime(event.startLabelOn(day).takeUnless { event.allDay })
+        LineTime(time)
         Box(Modifier.size(width = 14.dp, height = 14.dp), contentAlignment = Alignment.Center) {
             Box(
                 Modifier

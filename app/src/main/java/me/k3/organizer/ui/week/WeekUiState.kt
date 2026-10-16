@@ -30,12 +30,13 @@ fun buildWeekUiState(
     today: LocalDate,
     tasks: List<Task>,
     eventsByDay: Map<LocalDate, List<CalendarEvent>>,
+    scheduledClosedLast: Boolean = false,
 ): WeekUiState = WeekUiState(
     weekStart = weekStart,
     today = today,
     days = (0L..6L).map { offset ->
         val day = weekStart.plusDays(offset)
-        buildDayUiState(day, today, tasks, eventsByDay[day].orEmpty())
+        buildDayUiState(day, today, tasks, eventsByDay[day].orEmpty(), scheduledClosedLast = scheduledClosedLast)
     },
 )
 

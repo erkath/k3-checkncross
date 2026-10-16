@@ -27,6 +27,8 @@ import me.k3.organizer.data.TaskActions
 import me.k3.organizer.data.TaskRepository
 import me.k3.organizer.data.calendar.CalendarSource
 import me.k3.organizer.model.CalendarEvent
+import me.k3.organizer.model.Routine
+import me.k3.organizer.model.RoutineMark
 import me.k3.organizer.model.Task
 import me.k3.organizer.ui.common.TodayTracker
 import java.time.DayOfWeek
@@ -74,18 +76,21 @@ class DayViewModel(
             emptyList()
         }
 
-    /** Routines with their marks; one flow, since combine takes at most five. */
-    private val routineData = combine(routineRepository.routines, routineRepository.marks) { routines, marks -> routines to marks }
+    /** Routines with their marks and the Scheduled sort option; one flow, since combine takes at most five. */
+    private val extras = combine(routineRepository.routines, routineRepository.marks, preferences.scheduledClosedLast, ::Extras)
+
+    private class Extras(val routines: List<Routine>, val marks: List<RoutineMark>, val scheduledClosedLast: Boolean)
 
     val uiState: StateFlow<DayUiState> =
-        combine(day, todayTracker.flow, repository.tasks, events, routineData) { day, today, tasks, events, (routines, marks) ->
+        combine(day, todayTracker.flow, repository.tasks, events, extras) { day, today, tasks, events, extras ->
             buildDayUiState(
                 day,
                 today,
                 tasks,
                 // Events still loading for a newly shown day: show none rather than the previous day's.
                 if (events.day == day) events.events else emptyList(),
-                routinesOn(day, today, routines, marks, firstDayOfWeek),
+                routinesOn(day, today, extras.routines, extras.marks, firstDayOfWeek),
+                extras.scheduledClosedLast,
             )
         }
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), DayUiState(day = today, today = today))
@@ -93,6 +98,9 @@ class DayViewModel(
     fun previousDay() = day.update { it.minusDays(1) }
     fun nextDay() = day.update { it.plusDays(1) }
     fun goToToday() = day.update { today }
+
+    /** The toggle on the Scheduled section: closed tasks to the bottom, or a strict timeline. */
+    fun toggleScheduledClosedLast() = preferences.setScheduledClosedLast(!preferences.scheduledClosedLast.value)
 
     /** The day currently shown, e.g. to open the Week screen on its week. */
     val shownDay: LocalDate get() = day.value

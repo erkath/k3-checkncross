@@ -17,6 +17,7 @@ import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import me.k3.organizer.OrganizerApp
+import me.k3.organizer.data.AppPreferences
 import me.k3.organizer.data.TaskRepository
 import me.k3.organizer.data.calendar.CalendarSource
 import me.k3.organizer.model.CalendarEvent
@@ -31,6 +32,7 @@ import java.util.Locale
 class WeekViewModel(
     repository: TaskRepository,
     private val calendar: CalendarSource,
+    private val preferences: AppPreferences,
     private val firstDayOfWeek: DayOfWeek,
     now: () -> LocalDateTime = LocalDateTime::now,
 ) : ViewModel() {
@@ -59,8 +61,8 @@ class WeekViewModel(
         }
 
     val uiState: StateFlow<WeekUiState> =
-        combine(weekStart, todayTracker.flow, repository.tasks, events) { start, today, tasks, events ->
-            buildWeekUiState(start, today, tasks, if (events.weekStart == start) events.byDay else emptyMap())
+        combine(weekStart, todayTracker.flow, repository.tasks, events, preferences.scheduledClosedLast) { start, today, tasks, events, closedLast ->
+            buildWeekUiState(start, today, tasks, if (events.weekStart == start) events.byDay else emptyMap(), closedLast)
         }.stateIn(
             viewModelScope,
             SharingStarted.WhileSubscribed(5_000),
@@ -94,7 +96,7 @@ class WeekViewModel(
         val Factory = viewModelFactory {
             initializer {
                 val app = this[APPLICATION_KEY] as OrganizerApp
-                WeekViewModel(app.taskRepository, app.calendarSource, WeekFields.of(Locale.getDefault()).firstDayOfWeek)
+                WeekViewModel(app.taskRepository, app.calendarSource, app.preferences, WeekFields.of(Locale.getDefault()).firstDayOfWeek)
             }
         }
     }

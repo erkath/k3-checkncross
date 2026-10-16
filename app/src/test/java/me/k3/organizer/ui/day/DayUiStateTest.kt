@@ -115,6 +115,33 @@ class DayUiStateTest {
         assertEquals(listOf("t2", "t1", "e10"), ids(buildDayUiState(mon, mon, tasks, events).scheduled))
     }
 
+    @Test
+    fun scheduled_closedLast_sinksClosedTasks_eventsStayInTimeline() {
+        val tasks = listOf(timed(1, mon, 9), timed(2, mon, 14), timed(3, mon, 8).markDone(), timed(4, mon, 7).cancel())
+        val events = listOf(event(10, mon.atTime(11, 0), mon.atTime(12, 0)))
+        val state = buildDayUiState(mon, mon, tasks, events, scheduledClosedLast = true)
+        // Open work and events by time, then done (green), then grey.
+        assertEquals(listOf("t1", "e10", "t2", "t3", "t4"), ids(state.scheduled))
+        assertTrue(state.scheduledClosedLast)
+    }
+
+    @Test
+    fun timeSlots_showRepeatedStartOnce() {
+        val tasks = listOf(timed(1, mon, 9), timed(2, mon, 9), timed(3, mon, 14))
+        val events = listOf(event(10, mon.atTime(9, 0), mon.atTime(9, 30)), event(11, mon.atTime(14, 0), mon.atTime(15, 0)))
+        val items = buildDayUiState(mon, mon, tasks, events).scheduled
+        assertEquals(listOf("t1", "t2", "e10", "t3", "e11"), ids(items))
+        assertEquals(listOf("09:00", null, null, "14:00", null), timeSlots(items, mon))
+    }
+
+    @Test
+    fun timeSlots_sameTimeApart_isShownAgain() {
+        // With closed tasks at the bottom, a 9:00 done task follows a 14:00 one: its time is shown.
+        val tasks = listOf(timed(1, mon, 9), timed(2, mon, 14), timed(3, mon, 9).markDone())
+        val items = buildDayUiState(mon, mon, tasks, scheduledClosedLast = true).scheduled
+        assertEquals(listOf("09:00", "14:00", "09:00"), timeSlots(items, mon))
+    }
+
     // --- calendar events ---
 
     private fun event(id: Long, start: LocalDateTime, end: LocalDateTime, allDay: Boolean = false) =
