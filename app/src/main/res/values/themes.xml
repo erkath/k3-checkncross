@@ -1,5 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
 
-    <style name="Theme.MyOrganizer" parent="android:Theme.Material.Light.NoActionBar" />
+    <style name="Theme.MyOrganizer" parent="android:Theme.Material.Light.NoActionBar">
+        <!-- No white flash at start: the window is paper-colored before Compose draws. -->
+        <item name="android:windowBackground">@color/window_background</item>
+    </style>
 </resources>

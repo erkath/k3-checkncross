@@ -4,31 +4,23 @@ import androidx.compose.material3.Typography
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.sp
 
-// Set of Material typography styles to start with
+private val Default = Typography()
+
+/** Headings in a serif for a bookish, paper feel; body text stays sans-serif for easy reading. */
+private fun TextStyle.serif(weight: FontWeight? = null) =
+    copy(fontFamily = FontFamily.Serif, fontWeight = weight ?: fontWeight)
+
 val Typography = Typography(
-    bodyLarge = TextStyle(
-        fontFamily = FontFamily.Default,
-        fontWeight = FontWeight.Normal,
-        fontSize = 16.sp,
-        lineHeight = 24.sp,
-        letterSpacing = 0.5.sp
-    )
-    /* Other default text styles to override
-    titleLarge = TextStyle(
-        fontFamily = FontFamily.Default,
-        fontWeight = FontWeight.Normal,
-        fontSize = 22.sp,
-        lineHeight = 28.sp,
-        letterSpacing = 0.sp
-    ),
-    labelSmall = TextStyle(
-        fontFamily = FontFamily.Default,
-        fontWeight = FontWeight.Medium,
-        fontSize = 11.sp,
-        lineHeight = 16.sp,
-        letterSpacing = 0.5.sp
-    )
-    */
+    displayLarge = Default.displayLarge.serif(),
+    displayMedium = Default.displayMedium.serif(),
+    displaySmall = Default.displaySmall.serif(),
+    headlineLarge = Default.headlineLarge.serif(),
+    headlineMedium = Default.headlineMedium.serif(),
+    headlineSmall = Default.headlineSmall.serif(),
+    titleLarge = Default.titleLarge.serif(FontWeight.SemiBold),
+    titleMedium = Default.titleMedium.serif(FontWeight.SemiBold),
+    titleSmall = Default.titleSmall.serif(FontWeight.SemiBold),
+    // Section titles ("Scheduled", "Anytime") use labelLarge.
+    labelLarge = Default.labelLarge.serif(FontWeight.SemiBold),
 )

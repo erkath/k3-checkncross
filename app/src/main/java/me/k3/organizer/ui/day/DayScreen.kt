@@ -260,7 +260,12 @@ fun DayContent(
         // System bars are handled by AppRoot's Scaffold around this screen.
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         floatingActionButton = {
-            FloatingActionButton(onClick = onAddTask) {
+            // The one brick-red accent of the "Paper" palette.
+            FloatingActionButton(
+                onClick = onAddTask,
+                containerColor = MaterialTheme.colorScheme.tertiary,
+                contentColor = MaterialTheme.colorScheme.onTertiary,
+            ) {
                 Icon(painterResource(R.drawable.ic_add), contentDescription = stringResource(R.string.day_add_task))
             }
         },

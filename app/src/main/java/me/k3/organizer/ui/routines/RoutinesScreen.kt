@@ -94,7 +94,12 @@ fun RoutinesContent(items: List<RoutineListItem>, onAdd: () -> Unit, onOpen: (Ro
         // System bars are handled by AppRoot's Scaffold around this screen.
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         floatingActionButton = {
-            FloatingActionButton(onClick = onAdd) {
+            // The one brick-red accent of the "Paper" palette.
+            FloatingActionButton(
+                onClick = onAdd,
+                containerColor = MaterialTheme.colorScheme.tertiary,
+                contentColor = MaterialTheme.colorScheme.onTertiary,
+            ) {
                 Icon(painterResource(R.drawable.ic_add), contentDescription = stringResource(R.string.routines_add))
             }
         },
