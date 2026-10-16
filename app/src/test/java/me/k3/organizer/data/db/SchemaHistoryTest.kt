@@ -54,6 +54,7 @@ class SchemaHistoryTest {
         /** Version → identityHash from `app/schemas/.../<version>.json`. Append only. */
         val SHIPPED = mapOf(
             1 to "eb630d9bd0881c457e11a5b829064e66",
+            2 to "c60302ccc9cb888b440f917ceff7c700",
         )
     }
 }
