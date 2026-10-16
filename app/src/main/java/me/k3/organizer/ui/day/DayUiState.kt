@@ -21,6 +21,8 @@ data class DayUiState(
     val backlog: List<Task> = emptyList(),
     /** Open tasks left on past days, oldest first; the same for any day shown. */
     val overdue: List<Task> = emptyList(),
+    /** For tasks of [day]: how many times each was postponed (moves in its chain, backlog trips included). */
+    val moveCounts: Map<Long, Int> = emptyMap(),
     /** Calendar events lasting all of [day] (or longer). */
     val allDayEvents: List<CalendarEvent> = emptyList(),
     /** The "Scheduled" section: timed tasks and timed calendar events together. */
@@ -98,6 +100,7 @@ fun buildDayUiState(
             .filter { it.day == null && it.status == TaskStatus.OPEN }
             .sortedBy { it.id },
         overdue = overdueTasks(tasks, today),
+        moveCounts = moveCounts(onDay, tasks),
         allDayEvents = markedEvents.filter { it.allDay },
         scheduled = scheduledItems(day, timed, markedEvents.filter { !it.allDay }, scheduledClosedLast),
         scheduledClosedLast = scheduledClosedLast,
@@ -178,3 +181,22 @@ fun eventSwipeLeft(event: CalendarEvent): TaskStatus? =
 
 fun canSwipeLeft(event: CalendarEvent): Boolean =
     event.status == TaskStatus.OPEN || event.status == TaskStatus.CANCELLED
+
+/**
+ * How many times each of [tasks] was postponed: the MOVED tasks before it in its chain
+ * ([Task.movedFrom] links, looked up in [all]). Tasks never moved are left out. A move that was
+ * reverted is gone from the chain, so it no longer counts.
+ */
+fun moveCounts(tasks: List<Task>, all: List<Task>): Map<Long, Int> {
+    val byId = all.associateBy { it.id }
+    return tasks.mapNotNull { task ->
+        var count = 0
+        var previous = task.movedFrom?.let(byId::get)
+        // The bound guards against a broken, circular chain.
+        while (previous != null && count < all.size) {
+            count++
+            previous = previous.movedFrom?.let(byId::get)
+        }
+        if (count > 0) task.id to count else null
+    }.toMap()
+}

@@ -56,6 +56,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.Role
@@ -338,7 +339,7 @@ private fun DayList(
             ) { index, item ->
                 val showTime = slots[index] != null
                 when (item) {
-                    is ScheduledItem.TaskItem -> TaskRow(item.task, today, taskCallbacks, Modifier.animateItem(), showTime)
+                    is ScheduledItem.TaskItem -> TaskRow(item.task, today, taskCallbacks, Modifier.animateItem(), showTime, state.moveCounts[item.task.id] ?: 0)
                     is ScheduledItem.EventItem ->
                         EventSwipeRow(item.event, state.day, eventCallbacks, Modifier.animateItem(), showTimeLabel = showTime)
                 }
@@ -349,7 +350,7 @@ private fun DayList(
             item(key = R.string.day_section_untimed) { SectionTitle(stringResource(R.string.day_section_untimed), Modifier.animateItem()) }
             items(state.untimed, key = { it.id }) { task ->
                 // animateItem: animates the move when a task sinks to the bottom after being closed.
-                TaskRow(task, today, taskCallbacks, Modifier.animateItem())
+                TaskRow(task, today, taskCallbacks, Modifier.animateItem(), moveCount = state.moveCounts[task.id] ?: 0)
             }
         }
 
@@ -465,6 +466,8 @@ private fun TaskRow(
     modifier: Modifier = Modifier,
     /** False for a timed task whose start repeats the row above: its time column stays blank. */
     showTime: Boolean = true,
+    /** How many times the task was postponed; shown in its subtitle when above 0. */
+    moveCount: Int = 0,
 ) {
     SwipeableRow(
         allowLeft = canSwipeLeft(task),
@@ -480,6 +483,7 @@ private fun TaskRow(
             onOpen = { callbacks.onOpen(task.id) },
             onCheckboxTap = { callbacks.onCheckboxTap(task.id) },
             showTime = showTime,
+            moveCount = moveCount,
         )
     }
 }
@@ -646,7 +650,14 @@ private fun SwipeBackground(direction: SwipeDirection, restore: Boolean, armed: 
 }
 
 @Composable
-private fun TaskRowContent(task: Task, today: LocalDate, onOpen: () -> Unit, onCheckboxTap: () -> Unit, showTime: Boolean = true) {
+private fun TaskRowContent(
+    task: Task,
+    today: LocalDate,
+    onOpen: () -> Unit,
+    onCheckboxTap: () -> Unit,
+    showTime: Boolean = true,
+    moveCount: Int = 0,
+) {
     val colors = MaterialTheme.colorScheme
     val textColor by animateColorAsState(taskTitleColor(task.status), label = "taskTextColor")
     val struck = isStruckThrough(task.status)
@@ -678,7 +689,7 @@ private fun TaskRowContent(task: Task, today: LocalDate, onOpen: () -> Unit, onC
                 color = textColor,
                 textDecoration = if (struck) TextDecoration.LineThrough else null,
             )
-            taskSubtitle(task, today)?.let {
+            taskSubtitle(task, today, moveCount)?.let {
                 Text(
                     text = it,
                     style = MaterialTheme.typography.bodySmall,
@@ -767,15 +778,19 @@ internal fun StatusCheckbox(status: TaskStatus, enabled: Boolean, onTap: () -> U
     }
 }
 
-/** Where a MOVED task went and/or the note; null when there is nothing to add. The time has its own column. */
+/** Where a MOVED task went, how often the task was postponed, the note; null if none. The time has its own column. */
 @Composable
-private fun taskSubtitle(task: Task, today: LocalDate): String? {
+private fun taskSubtitle(task: Task, today: LocalDate, moveCount: Int): String? {
     val parts = buildList {
         if (task.status == TaskStatus.MOVED) {
             add(
                 task.movedTo?.let { stringResource(R.string.task_moved_to, relativeDayLabel(it, today)) }
                     ?: stringResource(R.string.task_moved_to_backlog),
             )
+        }
+        // A MOVED trace already says where it went; the count is for the task that is still around.
+        if (moveCount > 0 && task.status != TaskStatus.MOVED) {
+            add(pluralStringResource(R.plurals.task_postponed, moveCount, moveCount))
         }
         task.note?.let { add(it) }
     }

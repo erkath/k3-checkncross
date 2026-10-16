@@ -1,5 +1,8 @@
 package me.k3.organizer.ui.day
 
+import kotlinx.coroutines.runBlocking
+import me.k3.organizer.data.InMemoryTaskRepository
+import me.k3.organizer.data.TaskActions
 import me.k3.organizer.model.CalendarEvent
 import me.k3.organizer.model.EventMark
 import me.k3.organizer.model.Task
@@ -227,6 +230,46 @@ class DayUiStateTest {
         assertNull(eventSwipeLeft(open.copy(status = TaskStatus.CANCELLED)))
         assertTrue(canSwipeLeft(open))
         assertFalse(canSwipeLeft(open.copy(status = TaskStatus.DONE)))
+    }
+
+    // --- move counts ---
+
+    @Test
+    fun moveCounts_countTheChain_includingBacklogTrips() = runBlocking {
+        val repo = InMemoryTaskRepository(listOf(untimed(1, mon), untimed(2, mon)))
+        val actions = TaskActions(repo)
+        val tue1 = actions.move(1, tue)
+        val backlog = actions.toBacklog(tue1.id)
+        val wed = actions.schedule(backlog.id, tue.plusDays(1))
+
+        // Planning from the backlog keeps the task (same id) and is not a move: Monday → Tuesday → backlog = 2.
+        assertEquals(backlog.id, wed.id)
+        val counts = moveCounts(repo.tasks.value, repo.tasks.value)
+        assertEquals(2, counts[wed.id])
+        assertEquals(1, counts[tue1.id])
+        assertNull(counts[2L]) // never moved
+        assertNull(counts[1L]) // the first task of a chain has nothing before it
+    }
+
+    @Test
+    fun moveCounts_shrinkWhenAMoveIsReverted() = runBlocking {
+        val repo = InMemoryTaskRepository(listOf(untimed(1, mon)))
+        val actions = TaskActions(repo)
+        val tueCopy = actions.move(1, tue)
+        val wedCopy = actions.move(tueCopy.id, tue.plusDays(1))
+        assertEquals(2, moveCounts(repo.tasks.value, repo.tasks.value)[wedCopy.id])
+
+        val back = actions.move(wedCopy.id, tue) // back to Tuesday: the Wednesday step is undone
+        assertEquals(1, moveCounts(repo.tasks.value, repo.tasks.value)[back.id])
+    }
+
+    @Test
+    fun moveCounts_inDayState_onlyForTheDay() {
+        val moved = untimed(1, mon).moveTo(tue).old
+        val copy = untimed(2, tue).copy(movedFrom = 1)
+        val state = buildDayUiState(tue, mon, listOf(moved, copy))
+        assertEquals(mapOf(2L to 1), state.moveCounts)
+        assertTrue(buildDayUiState(mon, mon, listOf(moved, copy)).moveCounts.isEmpty())
     }
 
     // --- the date changing ---

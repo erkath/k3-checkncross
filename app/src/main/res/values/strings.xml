@@ -122,4 +122,8 @@
     <string name="task_cancel">Cancel task</string>
     <string name="task_moved_to">Moved to %1$s</string>
     <string name="task_moved_to_backlog">Moved to backlog</string>
+    <plurals name="task_postponed">
+        <item quantity="one">Postponed once</item>
+        <item quantity="other">Postponed %1$d times</item>
+    </plurals>
 </resources>
