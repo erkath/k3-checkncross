@@ -21,7 +21,6 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
@@ -97,6 +96,7 @@ fun WeekContent(
 @Composable
 private fun WeekHeader(state: WeekUiState, onPrevious: () -> Unit, onNext: () -> Unit, onThisWeek: () -> Unit) {
     Column {
+        // Same layout as the Day header: ‹ label › and then "back to this week" as an icon.
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
             IconButton(onClick = onPrevious) {
                 Icon(painterResource(R.drawable.ic_chevron_left), contentDescription = stringResource(R.string.week_previous))
@@ -105,13 +105,17 @@ private fun WeekHeader(state: WeekUiState, onPrevious: () -> Unit, onNext: () ->
                 // The configuration's locale, not Locale.getDefault(): Compose recomposes when it changes.
                 text = weekRangeLabel(state.weekStart, state.weekEnd, state.today.year, LocalConfiguration.current.locales[0]),
                 style = MaterialTheme.typography.titleLarge,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f),
             )
-            if (!state.containsToday) {
-                TextButton(onClick = onThisWeek) { Text(stringResource(R.string.week_this)) }
-            }
             IconButton(onClick = onNext) {
                 Icon(painterResource(R.drawable.ic_chevron_right), contentDescription = stringResource(R.string.week_next))
+            }
+            if (!state.containsToday) {
+                IconButton(onClick = onThisWeek) {
+                    Icon(painterResource(R.drawable.ic_today), contentDescription = stringResource(R.string.week_this))
+                }
             }
         }
         HorizontalDivider()

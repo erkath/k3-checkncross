@@ -15,6 +15,7 @@ import androidx.compose.foundation.gestures.draggable
 import androidx.compose.foundation.gestures.rememberDraggableState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.WindowInsets
@@ -39,7 +40,6 @@ import androidx.compose.material3.IconToggleButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -64,6 +64,7 @@ import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
@@ -89,7 +90,10 @@ import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import kotlin.math.roundToInt
 
-private val dayFormat = DateTimeFormatter.ofPattern("EEEE, d MMMM")
+private val weekdayFormat = DateTimeFormatter.ofPattern("EEEE")
+private val dateFormat = DateTimeFormatter.ofPattern("d MMMM")
+private val shortWeekdayFormat = DateTimeFormatter.ofPattern("EEE")
+private val shortDateFormat = DateTimeFormatter.ofPattern("d MMM")
 
 /** Day screen bound to its ViewModel. */
 @Composable
@@ -390,26 +394,51 @@ private fun DayHeader(
     onOpenReview: () -> Unit,
 ) {
     Column {
+        // One row that fits a narrow phone: the date takes two short lines instead of one long one,
+        // and "back to today" is an icon. Whatever is still too long is cut with an ellipsis.
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
             IconButton(onClick = onPreviousDay) {
                 Icon(painterResource(R.drawable.ic_chevron_left), contentDescription = stringResource(R.string.day_previous))
             }
-            Text(
-                text = state.day.format(dayFormat),
-                style = MaterialTheme.typography.titleLarge,
-                modifier = Modifier.weight(1f),
-            )
-            if (!state.isToday) {
-                TextButton(onClick = onToday) { Text(stringResource(R.string.day_today)) }
+            // Short forms ("Wed", "16 Sep") when the buttons leave little room, e.g. on a narrow phone.
+            BoxWithConstraints(modifier = Modifier.weight(1f)) {
+                val short = maxWidth < 160.dp
+                Column {
+                    Text(
+                        text = weekdayLine(state.day, state.today, short),
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Text(
+                        text = state.day.format(if (short) shortDateFormat else dateFormat),
+                        style = MaterialTheme.typography.titleLarge,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
             }
             IconButton(onClick = onNextDay) {
                 Icon(painterResource(R.drawable.ic_chevron_right), contentDescription = stringResource(R.string.day_next))
+            }
+            if (!state.isToday) {
+                IconButton(onClick = onToday) {
+                    Icon(painterResource(R.drawable.ic_today), contentDescription = stringResource(R.string.day_go_to_today))
+                }
             }
             if (state.overdue.isNotEmpty()) OverdueButton(count = state.overdue.size, onClick = onOpenReview)
             BacklogButton(count = state.backlog.size, onClick = onOpenBacklog)
         }
         HorizontalDivider()
     }
+}
+
+/** "Wednesday" ("Wed" if [short]), plus "· Tomorrow" / "· Yesterday" when that helps; today needs no hint. */
+@Composable
+private fun weekdayLine(day: LocalDate, today: LocalDate, short: Boolean): String {
+    val weekday = day.format(if (short) shortWeekdayFormat else weekdayFormat)
+    return if (day == today.plusDays(1) || day == today.minusDays(1)) "$weekday · ${relativeDayLabel(day, today)}" else weekday
 }
 
 /** Opens the overdue review; shown only while open tasks are left on past days. */
@@ -843,6 +872,21 @@ private fun DayContentYesterdayPreview() {
     MyOrganizerTheme {
         DayContent(
             state = buildDayUiState(today.minusDays(1), today, sampleTasks(today)),
+            onPreviousDay = {}, onNextDay = {}, onToday = {}, taskCallbacks = TaskCallbacks.None, routineCallbacks = RoutineCallbacks.None,
+            onAddTask = {}, onOpenBacklog = {}, onOpenReview = {}, onToggleScheduledSort = {},
+            calendarPrompt = null, eventCallbacks = EventCallbacks.None, onConnectCalendar = null,
+        )
+    }
+}
+
+/** The tightest header: a narrow phone, a day that is not today (with the longest weekday and a long month), overdue and backlog buttons. */
+@Preview(showBackground = true, widthDp = 320)
+@Composable
+private fun DayContentNarrowPreview() {
+    val today = LocalDate.of(2026, 9, 15) // Tuesday; the screen shows Wednesday 16 September
+    MyOrganizerTheme {
+        DayContent(
+            state = buildDayUiState(today.plusDays(1), today, sampleTasks(today)),
             onPreviousDay = {}, onNextDay = {}, onToday = {}, taskCallbacks = TaskCallbacks.None, routineCallbacks = RoutineCallbacks.None,
             onAddTask = {}, onOpenBacklog = {}, onOpenReview = {}, onToggleScheduledSort = {},
             calendarPrompt = null, eventCallbacks = EventCallbacks.None, onConnectCalendar = null,

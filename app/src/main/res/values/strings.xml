@@ -4,6 +4,7 @@
     <string name="day_previous">Previous day</string>
     <string name="day_next">Next day</string>
     <string name="day_today">Today</string>
+    <string name="day_go_to_today">Go to today</string>
     <string name="day_section_timed">Scheduled</string>
     <string name="day_section_untimed">Anytime</string>
     <string name="day_empty">Nothing planned for this day</string>
